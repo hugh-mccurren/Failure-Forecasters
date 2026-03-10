@@ -379,76 +379,79 @@ REC_COLORS = {
     "Defer to Future Cycle":  "#cbd5e1",
 }
 
-# Chart 1 -- Risk vs Cost scatter
+# Consistent ordering: recommended first (by priority desc), then deferred (by priority desc)
+# Reversed so highest-priority appears at the top of horizontal bar charts
+chart_order = pd.concat([
+    deferred_df.sort_values("Priority Score", ascending=False),
+    selected_df.sort_values("Priority Score", ascending=False),
+])
+chart_colors = [REC_COLORS.get(r, "#cbd5e1") for r in chart_order["Recommendation"]]
+
+CHART_LAYOUT = dict(
+    plot_bgcolor="#fafcfe", paper_bgcolor="#ffffff",
+    font=dict(family="Inter,system-ui,sans-serif", size=11),
+    height=360,
+)
+
+# Chart 1 -- Priority Score by Asset
 with ch1:
-    # Draw deferred first (background), then recommended on top
     fig1 = go.Figure()
-
-    for rec_label in reversed(list(REC_COLORS.keys())):
-        subset = ranked_df[ranked_df["Recommendation"] == rec_label]
-        if subset.empty:
-            continue
-        is_selected = rec_label != "Defer to Future Cycle"
-        fig1.add_trace(go.Scatter(
-            x=subset["Upgrade Cost ($K)"],
-            y=subset["Priority Score"],
-            mode="markers",
-            name=rec_label,
-            marker=dict(
-                size=subset["Carbon (t CO2e)"] * 1.8 + 10,
-                color=REC_COLORS[rec_label],
-                opacity=0.92 if is_selected else 0.4,
-                line=dict(width=2 if is_selected else 1,
-                          color="white" if is_selected else "#e2e8f0"),
-            ),
-            text=subset["Asset Name"],
-            hovertemplate="<b>%{text}</b><br>Score: %{y:.1f}<br>Cost: $%{x:,.0f}K<extra></extra>",
-        ))
-
-    fig1.update_layout(
-        title=dict(text="Risk vs. Cost", font=dict(size=13, color="#334155")),
-        plot_bgcolor="#fafcfe", paper_bgcolor="#ffffff",
-        font=dict(family="Inter,system-ui,sans-serif", size=11),
-        margin=dict(l=44, r=16, t=40, b=20),
-        legend=dict(orientation="h", yanchor="top", y=-0.08,
-                    xanchor="center", x=0.5, font_size=9, title_text="",
-                    bgcolor="rgba(0,0,0,0)"),
-        height=360,
-    )
-    fig1.update_xaxes(gridcolor="#edf2f7", title_text="Upgrade Cost ($K)", title_font_size=11)
-    fig1.update_yaxes(gridcolor="#edf2f7", title_text="Priority Score", title_font_size=11)
-    st.plotly_chart(fig1, use_container_width=True)
-
-# Chart 2 -- Investment by Asset (sorted by priority score, highest at top)
-with ch2:
-    ordered = ranked_df.sort_values("Priority Score", ascending=True).copy()
-    bar_colors = [REC_COLORS.get(r, "#cbd5e1") for r in ordered["Recommendation"]]
-
-    fig2 = go.Figure()
-    fig2.add_trace(go.Bar(
-        y=ordered["Asset Name"],
-        x=ordered["Upgrade Cost ($K)"],
+    fig1.add_trace(go.Bar(
+        y=chart_order["Asset Name"],
+        x=chart_order["Priority Score"],
         orientation="h",
-        marker_color=bar_colors,
-        marker_line=dict(width=0.5, color="white"),
-        text=ordered["Upgrade Cost ($K)"].apply(lambda v: f"${v:,.0f}K"),
+        marker_color=chart_colors,
+        marker_line=dict(width=0),
+        text=chart_order["Priority Score"].apply(lambda v: f"{v:.0f}"),
         textposition="outside",
         textfont=dict(size=9, color="#475569"),
-        hovertemplate="<b>%{y}</b><br>Cost: $%{x:,.0f}K<br>Score: %{customdata[0]:.0f}/100<extra></extra>",
-        customdata=ordered[["Priority Score"]].values,
+        hovertemplate="<b>%{y}</b><br>Priority: %{x:.1f}/100<br>%{customdata[0]}<extra></extra>",
+        customdata=chart_order[["Recommendation"]].values,
         showlegend=False,
     ))
+    fig1.update_layout(
+        **CHART_LAYOUT,
+        title=dict(text="Priority Score by Asset", font=dict(size=13, color="#334155")),
+        margin=dict(l=8, r=40, t=40, b=24),
+    )
+    fig1.update_xaxes(gridcolor="#edf2f7", title_text="Priority Score", title_font_size=11)
+    fig1.update_yaxes(title_text="")
+    st.plotly_chart(fig1, use_container_width=True)
 
+# Chart 2 -- Upgrade Cost by Asset (same order)
+with ch2:
+    fig2 = go.Figure()
+    fig2.add_trace(go.Bar(
+        y=chart_order["Asset Name"],
+        x=chart_order["Upgrade Cost ($K)"],
+        orientation="h",
+        marker_color=chart_colors,
+        marker_line=dict(width=0),
+        text=chart_order["Upgrade Cost ($K)"].apply(lambda v: f"${v:,.0f}K"),
+        textposition="outside",
+        textfont=dict(size=9, color="#475569"),
+        hovertemplate="<b>%{y}</b><br>Cost: $%{x:,.0f}K<br>%{customdata[0]}<extra></extra>",
+        customdata=chart_order[["Recommendation"]].values,
+        showlegend=False,
+    ))
     fig2.update_layout(
-        title=dict(text="Investment by Asset", font=dict(size=13, color="#334155")),
-        plot_bgcolor="#fafcfe", paper_bgcolor="#ffffff",
-        font=dict(family="Inter,system-ui,sans-serif", size=11),
-        margin=dict(l=8, r=56, t=40, b=20),
-        height=360,
+        **CHART_LAYOUT,
+        title=dict(text="Upgrade Cost by Asset", font=dict(size=13, color="#334155")),
+        margin=dict(l=8, r=56, t=40, b=24),
     )
     fig2.update_xaxes(gridcolor="#edf2f7", title_text="Upgrade Cost ($K)", title_font_size=11)
     fig2.update_yaxes(title_text="")
     st.plotly_chart(fig2, use_container_width=True)
+
+# Shared legend below both charts
+st.markdown(
+    '<div style="text-align:center;font-size:.75rem;color:#64748b;margin-top:-.5rem;">'
+    '<span style="color:#059669;">&#9679;</span> Recommended This Cycle &nbsp;&nbsp; '
+    '<span style="color:#d97706;">&#9679;</span> Near-Term Candidate &nbsp;&nbsp; '
+    '<span style="color:#cbd5e1;">&#9679;</span> Defer to Future Cycle'
+    '</div>',
+    unsafe_allow_html=True,
+)
 
 
 # ---- Methodology (collapsed) ----
