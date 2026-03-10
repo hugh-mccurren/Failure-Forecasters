@@ -108,6 +108,8 @@ def compute_priority(df: pd.DataFrame) -> pd.DataFrame:
     out["Priority Score"] = (
         (W_AGE * out["age_norm"] + W_COND * out["cond_norm"] + W_CONSEQ * out["conseq_norm"]) / tw * 100
     ).round(1)
+    # Risk score: condition x consequence normalized to 0-100
+    out["Risk Score"] = ((out["Condition (1-5)"] / 5) * (out["Failure Consequence"] / 5) * 100).round(1)
     return out
 
 
@@ -249,6 +251,13 @@ def label_rec(row):
     return "Defer to Future Cycle"
 
 ranked_df["Recommendation"] = ranked_df.apply(label_rec, axis=1)
+
+# Cost-efficiency metric: risk reduction per $100K of investment
+ranked_df["Risk Reduction per $100K"] = (
+    ranked_df["Risk Score"] / (ranked_df["Upgrade Cost ($K)"] / 100)
+).round(2)
+
+# Derive selected/deferred subsets (after all columns are set)
 selected_df = ranked_df[ranked_df["Selected"]].copy()
 deferred_df = ranked_df[~ranked_df["Selected"]].copy()
 
@@ -263,6 +272,11 @@ total_carb = selected_df["Carbon (t CO2e)"].sum()
 pct_used   = (total_cost / budget * 100) if budget > 0 else 0
 high_risk  = len(selected_df[selected_df["Failure Consequence"] >= 4])
 
+# System risk reduction
+total_system_risk = ranked_df["Risk Score"].sum()
+risk_reduced      = selected_df["Risk Score"].sum() if not selected_df.empty else 0
+risk_reduction_pct = (risk_reduced / total_system_risk * 100) if total_system_risk > 0 else 0
+
 # KPI row
 st.markdown(f"""
 <div class="kpi-row">
@@ -275,6 +289,11 @@ st.markdown(f"""
     <div class="kpi-label">Estimated Investment</div>
     <div class="kpi-value">${total_cost:,.0f}K</div>
     <div class="kpi-sub">{pct_used:.0f}% of budget allocated</div>
+  </div>
+  <div class="kpi" style="border-top:3px solid #059669;">
+    <div class="kpi-label">System Risk Reduction</div>
+    <div class="kpi-value">{risk_reduction_pct:.0f}%</div>
+    <div class="kpi-sub">{risk_reduced:.0f} of {total_system_risk:.0f} total risk points</div>
   </div>
   <div class="kpi">
     <div class="kpi-label">Budget Remaining</div>
@@ -314,26 +333,27 @@ if not selected_df.empty:
             _, row = rows[i + j]
             rank_num = i + j + 1
             rationale = generate_rationale(row, scored_df)
+            risk_eff = row["Risk Reduction per $100K"] if "Risk Reduction per $100K" in row.index else 0
             with col:
-                # Green left-border card via wrapping div
-                st.markdown(
-                    f'<div style="border-left:4px solid #059669;padding-left:.75rem;margin-bottom:.2rem;">'
-                    f'<span style="background:#059669;color:#fff;padding:1px 7px;'
-                    f'border-radius:3px;font-size:.65rem;font-weight:600;'
-                    f'letter-spacing:.04em;">PRIORITY #{rank_num}</span>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-                st.markdown(f"**{row['Asset Name']}**  \n{rationale}")
-                st.caption(
-                    f"{row['Asset Type']}  &middot;  "
-                    f"{int(row['Age (yrs)'])} yrs  &middot;  "
-                    f"Condition {int(row['Condition (1-5)'])}/5  &middot;  "
-                    f"Score **{row['Priority Score']:.0f}**/100  &middot;  "
-                    f"**${row['Upgrade Cost ($K)']:,.0f}K**  &middot;  "
-                    f"{row['Carbon (t CO2e)']:.1f} t CO2e"
-                )
-                st.divider()
+                with st.container(border=True):
+                    st.markdown(
+                        f'<div style="border-left:4px solid #059669;padding-left:.7rem;">'
+                        f'<span style="background:#059669;color:#fff;padding:1px 7px;'
+                        f'border-radius:3px;font-size:.62rem;font-weight:600;'
+                        f'letter-spacing:.04em;">PRIORITY #{rank_num}</span><br>'
+                        f'<span style="font-size:1rem;font-weight:600;color:#0f172a;">'
+                        f'{row["Asset Name"]}</span></div>',
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown(f"_{rationale}_")
+                    st.caption(
+                        f"{row['Asset Type']}  &middot;  "
+                        f"{int(row['Age (yrs)'])} yrs  &middot;  "
+                        f"Condition {int(row['Condition (1-5)'])}/5  &middot;  "
+                        f"Score **{row['Priority Score']:.0f}**/100  &middot;  "
+                        f"**${row['Upgrade Cost ($K)']:,.0f}K**  &middot;  "
+                        f"{row['Carbon (t CO2e)']:.1f} t CO2e"
+                    )
 else:
     st.info("No assets fit within the current budget. Increase the capital budget to see recommendations.")
 
@@ -379,8 +399,7 @@ REC_COLORS = {
     "Defer to Future Cycle":  "#cbd5e1",
 }
 
-# Consistent ordering: recommended first (by priority desc), then deferred (by priority desc)
-# Reversed so highest-priority appears at the top of horizontal bar charts
+# Consistent ordering: recommended first (by priority desc), then deferred
 chart_order = pd.concat([
     deferred_df.sort_values("Priority Score", ascending=False),
     selected_df.sort_values("Priority Score", ascending=False),
@@ -414,32 +433,43 @@ with ch1:
         title=dict(text="Priority Score by Asset", font=dict(size=13, color="#334155")),
         margin=dict(l=8, r=40, t=40, b=24),
     )
-    fig1.update_xaxes(gridcolor="#edf2f7", title_text="Priority Score", title_font_size=11)
+    fig1.update_xaxes(gridcolor="#edf2f7", title_text="Priority Score (0-100)", title_font_size=11)
     fig1.update_yaxes(title_text="")
     st.plotly_chart(fig1, use_container_width=True)
 
-# Chart 2 -- Upgrade Cost by Asset (same order)
+# Chart 2 -- Cost Efficiency: risk reduction per $100K
 with ch2:
+    eff_order = pd.concat([
+        deferred_df.sort_values("Risk Reduction per $100K", ascending=False),
+        selected_df.sort_values("Risk Reduction per $100K", ascending=False),
+    ])
+    eff_colors = [REC_COLORS.get(r, "#cbd5e1") for r in eff_order["Recommendation"]]
+
     fig2 = go.Figure()
     fig2.add_trace(go.Bar(
-        y=chart_order["Asset Name"],
-        x=chart_order["Upgrade Cost ($K)"],
+        y=eff_order["Asset Name"],
+        x=eff_order["Risk Reduction per $100K"],
         orientation="h",
-        marker_color=chart_colors,
+        marker_color=eff_colors,
         marker_line=dict(width=0),
-        text=chart_order["Upgrade Cost ($K)"].apply(lambda v: f"${v:,.0f}K"),
+        text=eff_order["Risk Reduction per $100K"].apply(lambda v: f"{v:.1f}"),
         textposition="outside",
         textfont=dict(size=9, color="#475569"),
-        hovertemplate="<b>%{y}</b><br>Cost: $%{x:,.0f}K<br>%{customdata[0]}<extra></extra>",
-        customdata=chart_order[["Recommendation"]].values,
+        hovertemplate=(
+            "<b>%{y}</b><br>"
+            "Risk reduction: %{x:.1f} per $100K<br>"
+            "Cost: $%{customdata[0]:,.0f}K<br>"
+            "Risk score: %{customdata[1]:.0f}<extra></extra>"
+        ),
+        customdata=eff_order[["Upgrade Cost ($K)", "Risk Score"]].values,
         showlegend=False,
     ))
     fig2.update_layout(
         **CHART_LAYOUT,
-        title=dict(text="Upgrade Cost by Asset", font=dict(size=13, color="#334155")),
-        margin=dict(l=8, r=56, t=40, b=24),
+        title=dict(text="Cost Efficiency (Risk Reduction per $100K)", font=dict(size=13, color="#334155")),
+        margin=dict(l=8, r=40, t=40, b=24),
     )
-    fig2.update_xaxes(gridcolor="#edf2f7", title_text="Upgrade Cost ($K)", title_font_size=11)
+    fig2.update_xaxes(gridcolor="#edf2f7", title_text="Risk Reduction per $100K", title_font_size=11)
     fig2.update_yaxes(title_text="")
     st.plotly_chart(fig2, use_container_width=True)
 
