@@ -1,5 +1,5 @@
 """
-Failure Forecasters — AI-Driven Water Infrastructure Upgrade Planner
+Failure Forecasters -- AI-Driven Water Infrastructure Upgrade Planner
 A decision-support tool for water utilities, municipalities, and local governments
 to prioritize infrastructure asset replacements based on risk, cost, and sustainability.
 """
@@ -21,78 +21,44 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------------------------------
-# Custom CSS — premium, minimal, water/infrastructure palette
+# CSS -- minimal, only for elements that need it (hero, KPIs, footer)
+# Native Streamlit components handle everything else.
 # ---------------------------------------------------------------------------
 st.markdown("""
 <style>
-/* ---- Global ---- */
+/* Global */
 .block-container {padding-top:1.2rem;padding-bottom:2rem;max-width:1100px;}
-html, body, [class*="css"] {font-family:'Inter','Segoe UI',system-ui,sans-serif;}
 
-/* ---- Hero ---- */
+/* Hero banner */
 .hero{background:linear-gradient(135deg,#0b3d54 0%,#146b8a 55%,#1a9d8f 100%);
   border-radius:14px;padding:1.3rem 2rem 1.1rem;color:#fff;margin-bottom:1.4rem;}
 .hero h1{font-size:1.55rem;font-weight:700;margin:0 0 .2rem;letter-spacing:-.4px;}
-.hero p{font-size:.85rem;opacity:.88;margin:0;line-height:1.45;max-width:680px;}
+.hero p{font-size:.85rem;opacity:.88;margin:0;line-height:1.45;max-width:700px;}
 
-/* ---- Step labels ---- */
+/* Step labels */
 .step-label{font-size:.7rem;font-weight:700;text-transform:uppercase;
   letter-spacing:.1em;color:#64748b;margin-top:1.5rem;margin-bottom:.55rem;
   display:flex;align-items:center;gap:.45rem;}
 .step-num{background:#0b3d54;color:#fff;border-radius:5px;
   padding:.1rem .45rem;font-size:.65rem;letter-spacing:.04em;}
 
-/* ---- Metric cards (HTML-based for subtitle support) ---- */
-.kpi-row{display:flex;gap:.75rem;margin-bottom:1rem;}
+/* KPI row */
+.kpi-row{display:flex;gap:.75rem;margin-bottom:.6rem;}
 .kpi{flex:1;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;
   padding:.85rem 1rem .7rem;min-width:0;}
 .kpi .kpi-label{font-size:.65rem;font-weight:600;text-transform:uppercase;
   letter-spacing:.06em;color:#64748b;margin-bottom:.15rem;}
-.kpi .kpi-value{font-size:1.35rem;font-weight:700;color:#0f172a;line-height:1.2;}
+.kpi .kpi-value{font-size:1.3rem;font-weight:700;color:#0f172a;line-height:1.2;}
 .kpi .kpi-sub{font-size:.72rem;color:#94a3b8;margin-top:.15rem;line-height:1.3;}
 
-/* ---- Recommendation panel ---- */
-.rec-panel{background:linear-gradient(135deg,#f0fdf4 0%,#ecfdf5 50%,#f0fdfa 100%);
-  border:1px solid #a7f3d0;border-radius:12px;padding:1.3rem 1.6rem 1.1rem;
-  margin-bottom:.8rem;position:relative;overflow:hidden;}
-.rec-panel::before{content:'';position:absolute;top:0;left:0;width:4px;
-  height:100%;background:linear-gradient(180deg,#059669,#0d9488);border-radius:4px 0 0 4px;}
-.rec-panel h3{color:#065f46;font-size:1.05rem;font-weight:700;margin:0 0 .1rem .1rem;}
-.rec-panel .rec-sub{font-size:.8rem;color:#047857;margin:0 0 .8rem .1rem;font-weight:400;}
-.rec-asset{display:flex;align-items:flex-start;gap:.7rem;
-  padding:.6rem .8rem;background:rgba(255,255,255,.65);border-radius:8px;
-  margin-bottom:.45rem;border:1px solid #d1fae5;}
-.rec-asset .rec-rank{background:#059669;color:#fff;border-radius:6px;
-  min-width:1.6rem;height:1.6rem;display:flex;align-items:center;
-  justify-content:center;font-size:.75rem;font-weight:700;flex-shrink:0;margin-top:.1rem;}
-.rec-asset .rec-info{flex:1;min-width:0;}
-.rec-asset .rec-name{font-weight:600;font-size:.88rem;color:#1e293b;}
-.rec-asset .rec-rationale{font-size:.78rem;color:#4b5563;line-height:1.4;margin-top:.1rem;}
-.rec-asset .rec-meta{font-size:.72rem;color:#6b7280;margin-top:.2rem;}
-.rec-asset .rec-meta span{margin-right:.8rem;}
-
-/* ---- Portfolio strip ---- */
-.port-strip{display:flex;gap:.6rem;margin-bottom:1.2rem;flex-wrap:wrap;}
-.port-chip{background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;
-  padding:.4rem .8rem;font-size:.75rem;color:#475569;font-weight:500;}
-.port-chip b{color:#0f172a;}
-
-/* ---- No-budget ---- */
-.no-budget{background:#fef2f2;border:1px solid #fecaca;border-radius:10px;
-  padding:1rem 1.3rem;margin-bottom:.8rem;}
-.no-budget p{color:#991b1b;font-size:.9rem;margin:0;}
-
-/* ---- Table section label ---- */
-.table-label{font-size:.8rem;font-weight:600;color:#475569;margin-bottom:.4rem;}
-
-/* ---- Charts ---- */
+/* Plotly chart containers */
 .stPlotlyChart{border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;}
 
-/* ---- Footer ---- */
+/* Footer */
 .footer{font-size:.75rem;color:#94a3b8;text-align:center;
   padding-top:.8rem;line-height:1.55;}
 
-/* ---- Streamlit chrome ---- */
+/* Streamlit chrome */
 #MainMenu{visibility:hidden;}footer{visibility:hidden;}header{visibility:hidden;}
 [data-testid="stDataFrame"]{border-radius:8px;}
 </style>
@@ -158,7 +124,7 @@ def select_within_budget(df: pd.DataFrame, budget: float) -> pd.DataFrame:
     ranked = df.sort_values("Priority Score", ascending=False).copy()
     remaining = budget
     selected = []
-    for idx, row in ranked.iterrows():
+    for _, row in ranked.iterrows():
         if row["Upgrade Cost ($K)"] <= remaining:
             selected.append(True)
             remaining -= row["Upgrade Cost ($K)"]
@@ -171,17 +137,13 @@ def select_within_budget(df: pd.DataFrame, budget: float) -> pd.DataFrame:
 def generate_rationale(row, all_df: pd.DataFrame) -> str:
     """Short, decision-ready rationale for why an asset was selected."""
     reasons = []
-    # Highest consequence check
     if row["Failure Consequence"] >= 4:
         reasons.append("high failure consequence")
-    # Poor condition
     if row["Condition (1-5)"] >= 4:
         reasons.append("poor asset condition")
-    # Old asset
     age_pct = row["Age (yrs)"] / all_df["Age (yrs)"].max() if all_df["Age (yrs)"].max() > 0 else 0
     if age_pct >= 0.7:
         reasons.append("aging infrastructure")
-    # Cost efficiency
     if row["Priority Score"] > 0:
         efficiency = row["Priority Score"] / (row["Upgrade Cost ($K)"] / 100)
         median_eff = all_df.apply(
@@ -200,10 +162,11 @@ def generate_rationale(row, all_df: pd.DataFrame) -> str:
 st.markdown("""
 <div class="hero">
     <h1>\U0001F4A7 Failure Forecasters</h1>
-    <p>Prioritize water infrastructure upgrades by failure risk, cost, and embodied carbon
-       \u2014 so every capital dollar goes where it matters most.</p>
+    <p>Prioritize water infrastructure upgrades by failure risk, cost, and embodied
+       carbon -- so every capital dollar goes where it matters most.</p>
 </div>
 """, unsafe_allow_html=True)
+
 
 # ---- Step 1: Asset Inventory ----
 st.markdown('<div class="step-label"><span class="step-num">1</span> Asset Inventory</div>',
@@ -219,9 +182,9 @@ edited_df = st.data_editor(
         "Asset Type":          st.column_config.SelectboxColumn("Type", options=ASSET_TYPES, width="small"),
         "Age (yrs)":           st.column_config.NumberColumn("Age (yrs)", min_value=0, max_value=200, step=1, width="small"),
         "Condition (1-5)":     st.column_config.NumberColumn("Condition", min_value=1, max_value=5, step=1,
-                                                             help="1 = Excellent \u00b7 5 = Failed", width="small"),
+                                                             help="1 = Excellent, 5 = Failed", width="small"),
         "Failure Consequence": st.column_config.NumberColumn("Consequence", min_value=1, max_value=5, step=1,
-                                                             help="1 = Minimal \u00b7 5 = Catastrophic", width="small"),
+                                                             help="1 = Minimal, 5 = Catastrophic", width="small"),
         "Upgrade Cost ($K)":   st.column_config.NumberColumn("Cost ($K)", min_value=0, step=10, format="$%d", width="small"),
         "Material":            st.column_config.SelectboxColumn("Material", options=MATERIAL_OPTIONS, width="small"),
     },
@@ -265,7 +228,6 @@ if favor_low_carbon or carbon_weight > 0:
 
 ranked_df = select_within_budget(scored_df, budget)
 
-# Labels
 def label_rec(row):
     if row["Selected"]:
         return "Recommended This Cycle" if row["Priority Score"] >= 40 else "Near-Term Candidate"
@@ -276,7 +238,7 @@ selected_df = ranked_df[ranked_df["Selected"]].copy()
 deferred_df = ranked_df[~ranked_df["Selected"]].copy()
 
 
-# ---- Step 3: Recommendations (CENTERPIECE) ----
+# ---- Step 3: Recommendations ----
 st.markdown('<div class="step-label"><span class="step-num">3</span> Recommended Upgrade Plan</div>',
             unsafe_allow_html=True)
 
@@ -286,7 +248,7 @@ total_carb = selected_df["Carbon (t CO2e)"].sum()
 pct_used   = (total_cost / budget * 100) if budget > 0 else 0
 high_risk  = len(selected_df[selected_df["Failure Consequence"] >= 4])
 
-# KPI row (HTML for subtitle support)
+# KPI row
 st.markdown(f"""
 <div class="kpi-row">
   <div class="kpi">
@@ -306,66 +268,51 @@ st.markdown(f"""
   </div>
   <div class="kpi">
     <div class="kpi-label">Embodied Carbon</div>
-    <div class="kpi-value">{total_carb:,.1f} <span style="font-size:.85rem;">t CO\u2082e</span></div>
+    <div class="kpi-value">{total_carb:,.1f} t CO2e</div>
     <div class="kpi-sub">Across all selected upgrades</div>
   </div>
 </div>
 """, unsafe_allow_html=True)
 
 
-# Recommendation panel with per-asset rationale
+# ---- Recommended portfolio (native Streamlit) ----
 if not selected_df.empty:
-    asset_cards = ""
-    for rank_i, (_, row) in enumerate(selected_df.iterrows(), 1):
-        rationale = generate_rationale(row, scored_df)
-        asset_cards += f"""
-        <div class="rec-asset">
-            <div class="rec-rank">{rank_i}</div>
-            <div class="rec-info">
-                <div class="rec-name">{row['Asset Name']}</div>
-                <div class="rec-rationale">{rationale}</div>
-                <div class="rec-meta">
-                    <span>{row['Asset Type']}</span>
-                    <span>{int(row['Age (yrs)'])} yrs old</span>
-                    <span>Condition {int(row['Condition (1-5)'])}/5</span>
-                    <span>Score {row['Priority Score']:.0f}/100</span>
-                    <span>${row['Upgrade Cost ($K)']:,.0f}K</span>
-                    <span>{row['Carbon (t CO2e)']:.1f} t CO\u2082e</span>
-                </div>
-            </div>
-        </div>"""
+    st.markdown(f"#### Recommended This Cycle")
+    st.caption(f"{len(selected_df)} upgrade{'s' if len(selected_df) != 1 else ''} "
+               f"selected by priority within ${budget:,.0f}K budget")
 
-    st.markdown(f"""
-    <div class="rec-panel">
-        <h3>Recommended This Cycle</h3>
-        <div class="rec-sub">{len(selected_df)} upgrade{'s' if len(selected_df) != 1 else ''} selected by priority within ${budget:,.0f}K budget</div>
-        {asset_cards}
-    </div>
-    """, unsafe_allow_html=True)
+    # Render asset cards in a 2-column grid
+    rows = list(selected_df.iterrows())
+    for i in range(0, len(rows), 2):
+        cols = st.columns(2)
+        for j, col in enumerate(cols):
+            if i + j >= len(rows):
+                break
+            _, row = rows[i + j]
+            rank_num = i + j + 1
+            rationale = generate_rationale(row, scored_df)
+            with col:
+                with st.container(border=True):
+                    st.markdown(
+                        f"**#{rank_num} {row['Asset Name']}**  \n"
+                        f"*{rationale}*"
+                    )
+                    st.caption(
+                        f"{row['Asset Type']}  &middot;  "
+                        f"{int(row['Age (yrs)'])} yrs old  &middot;  "
+                        f"Condition {int(row['Condition (1-5)'])}/5  &middot;  "
+                        f"Score **{row['Priority Score']:.0f}**/100  &middot;  "
+                        f"**${row['Upgrade Cost ($K)']:,.0f}K**  &middot;  "
+                        f"{row['Carbon (t CO2e)']:.1f} t CO2e"
+                    )
 else:
-    st.markdown("""
-    <div class="no-budget">
-        <p>No assets fit within the current budget. Increase the capital budget to see recommendations.</p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.info("No assets fit within the current budget. Increase the capital budget to see recommendations.")
 
-
-# Portfolio summary strip
-if not selected_df.empty:
-    avg_score = selected_df["Priority Score"].mean()
-    st.markdown(f"""
-    <div class="port-strip">
-        <div class="port-chip"><b>{len(selected_df)}</b> assets selected</div>
-        <div class="port-chip"><b>{pct_used:.0f}%</b> of budget used</div>
-        <div class="port-chip"><b>{high_risk}</b> high-risk assets addressed</div>
-        <div class="port-chip">Avg priority <b>{avg_score:.0f}</b>/100</div>
-        <div class="port-chip"><b>{total_carb:,.1f}</b> t CO\u2082e total carbon</div>
-    </div>
-    """, unsafe_allow_html=True)
+st.markdown("")  # spacer
 
 
 # ---- Full ranking table ----
-st.markdown('<div class="table-label">Full Asset Ranking</div>', unsafe_allow_html=True)
+st.markdown("**Full Asset Ranking**")
 
 display_cols = ["Asset Name", "Asset Type", "Priority Score",
                 "Upgrade Cost ($K)", "Carbon (t CO2e)", "Recommendation"]
@@ -405,66 +352,92 @@ REC_COLORS = {
     "Defer to Future Cycle":  "#cbd5e1",
 }
 
-# Chart 1 — Risk vs Cost with clear selected / deferred split
+# Chart 1 -- Risk vs Cost scatter
 with ch1:
     fig1 = px.scatter(
         ranked_df, x="Upgrade Cost ($K)", y="Priority Score",
         size="Carbon (t CO2e)", color="Recommendation",
         hover_name="Asset Name",
         hover_data={"Priority Score": ":.1f", "Upgrade Cost ($K)": ":$,.0f",
-                    "Carbon (t CO2e)": ":.1f t", "Recommendation": True},
+                    "Carbon (t CO2e)": ":.1f", "Recommendation": False},
         color_discrete_map=REC_COLORS,
         size_max=42,
         category_orders={"Recommendation": list(REC_COLORS.keys())},
     )
-    # Budget line
-    if budget > 0:
-        fig1.add_vline(x=budget, line_dash="dot", line_color="#94a3b8", line_width=1,
-                       annotation_text=f"Budget ${budget:,.0f}K",
-                       annotation_font_size=10, annotation_font_color="#94a3b8")
     fig1.update_layout(
         title=dict(text="Risk vs. Cost", font=dict(size=14, color="#334155")),
         plot_bgcolor="#fafcfe", paper_bgcolor="#ffffff",
-        font=dict(family="Inter,sans-serif", size=11),
+        font=dict(family="Inter,system-ui,sans-serif", size=11),
         margin=dict(l=44, r=16, t=48, b=32),
         legend=dict(orientation="h", yanchor="bottom", y=-0.30,
-                    xanchor="center", x=0.5, font_size=9,
-                    title_text=""),
-        height=360,
+                    xanchor="center", x=0.5, font_size=9, title_text=""),
+        height=370,
     )
     fig1.update_xaxes(gridcolor="#edf2f7", title_text="Upgrade Cost ($K)", title_font_size=11)
     fig1.update_yaxes(gridcolor="#edf2f7", title_text="Priority Score", title_font_size=11)
     st.plotly_chart(fig1, use_container_width=True)
 
-# Chart 2 — Horizontal bar: selected vs deferred, color = recommendation
+# Chart 2 -- Investment breakdown: stacked bar selected vs deferred
 with ch2:
-    bar_df = ranked_df.sort_values("Priority Score", ascending=True).copy()
-    fig2 = go.Figure()
-    for rec_label, color in REC_COLORS.items():
-        subset = bar_df[bar_df["Recommendation"] == rec_label]
-        if subset.empty:
-            continue
-        fig2.add_trace(go.Bar(
-            y=subset["Asset Name"], x=subset["Priority Score"],
-            orientation="h", name=rec_label,
-            marker_color=color,
-            text=subset["Priority Score"].apply(lambda v: f"{v:.0f}"),
-            textposition="outside", textfont_size=10,
-            hovertemplate="%{y}<br>Score: %{x:.1f}<br>Cost: $%{customdata[0]:,.0f}K<br>Carbon: %{customdata[1]:.1f} t CO₂e<extra></extra>",
-            customdata=subset[["Upgrade Cost ($K)", "Carbon (t CO2e)"]].values,
-        ))
-    fig2.update_layout(
-        title=dict(text="Upgrade Priority Ranking", font=dict(size=14, color="#334155")),
-        barmode="stack",
-        plot_bgcolor="#fafcfe", paper_bgcolor="#ffffff",
-        font=dict(family="Inter,sans-serif", size=11),
-        margin=dict(l=8, r=40, t=48, b=32),
-        legend=dict(orientation="h", yanchor="bottom", y=-0.30,
-                    xanchor="center", x=0.5, font_size=9,
-                    title_text=""),
-        height=360,
+    # Build a clean summary: cost allocated by recommendation category
+    budget_summary = (
+        ranked_df.groupby("Recommendation")
+        .agg({"Upgrade Cost ($K)": "sum", "Carbon (t CO2e)": "sum"})
+        .reindex(["Recommended This Cycle", "Near-Term Candidate", "Defer to Future Cycle"])
+        .dropna()
     )
-    fig2.update_xaxes(gridcolor="#edf2f7", title_text="Priority Score", title_font_size=11)
+
+    # Waterfall-style: show each selected asset's cost contribution
+    sel_bar = selected_df.sort_values("Priority Score", ascending=True).copy()
+    def_bar = deferred_df.sort_values("Priority Score", ascending=True).copy()
+
+    fig2 = go.Figure()
+
+    if not sel_bar.empty:
+        fig2.add_trace(go.Bar(
+            y=sel_bar["Asset Name"],
+            x=sel_bar["Upgrade Cost ($K)"],
+            orientation="h",
+            name="Recommended This Cycle",
+            marker_color="#059669",
+            text=sel_bar["Upgrade Cost ($K)"].apply(lambda v: f"${v:,.0f}K"),
+            textposition="outside",
+            textfont_size=10,
+            hovertemplate="%{y}<br>Cost: $%{x:,.0f}K<br>Score: %{customdata[0]:.0f}/100<extra></extra>",
+            customdata=sel_bar[["Priority Score"]].values,
+        ))
+
+    if not def_bar.empty:
+        fig2.add_trace(go.Bar(
+            y=def_bar["Asset Name"],
+            x=def_bar["Upgrade Cost ($K)"],
+            orientation="h",
+            name="Defer to Future Cycle",
+            marker_color="#e2e8f0",
+            text=def_bar["Upgrade Cost ($K)"].apply(lambda v: f"${v:,.0f}K"),
+            textposition="outside",
+            textfont_size=10,
+            hovertemplate="%{y}<br>Cost: $%{x:,.0f}K<br>Score: %{customdata[0]:.0f}/100<extra></extra>",
+            customdata=def_bar[["Priority Score"]].values,
+        ))
+
+    # Budget reference line
+    if budget > 0:
+        max_cost = ranked_df["Upgrade Cost ($K)"].max()
+        if budget <= max_cost * 1.5:
+            fig2.add_vline(x=budget, line_dash="dot", line_color="#94a3b8", line_width=1)
+
+    fig2.update_layout(
+        title=dict(text="Investment by Asset", font=dict(size=14, color="#334155")),
+        plot_bgcolor="#fafcfe", paper_bgcolor="#ffffff",
+        font=dict(family="Inter,system-ui,sans-serif", size=11),
+        margin=dict(l=8, r=50, t=48, b=32),
+        legend=dict(orientation="h", yanchor="bottom", y=-0.28,
+                    xanchor="center", x=0.5, font_size=9, title_text=""),
+        height=370,
+        barmode="stack",
+    )
+    fig2.update_xaxes(gridcolor="#edf2f7", title_text="Upgrade Cost ($K)", title_font_size=11)
     fig2.update_yaxes(title_text="")
     st.plotly_chart(fig2, use_container_width=True)
 
@@ -472,11 +445,11 @@ with ch2:
 # ---- Methodology (collapsed) ----
 with st.expander("Scoring Methodology"):
     st.markdown(f"""
-The priority score is a **transparent weighted index** — no black-box AI.
+The priority score is a **transparent weighted index** -- no black-box AI.
 
 | Factor | Weight | Scale |
 |--------|--------|-------|
-| Asset Age | {W_AGE:.0%} | Normalized 0\u20131 by oldest asset |
+| Asset Age | {W_AGE:.0%} | Normalized 0-1 by oldest asset |
 | Condition | {W_COND:.0%} | 1 (Excellent) to 5 (Failed) |
 | Failure Consequence | {W_CONSEQ:.0%} | 1 (Minimal) to 5 (Catastrophic) |
 
@@ -485,7 +458,7 @@ selected in order while they fit the remaining budget. If an asset is too expens
 algorithm skips it and continues to the next, maximizing the number of high-priority
 upgrades funded.
 
-Carbon estimates use planning-level factors (kg CO\u2082e/kg) scaled by upgrade cost.
+Carbon estimates use planning-level factors (kg CO2e/kg) scaled by upgrade cost.
 These are order-of-magnitude estimates for early capital planning, not detailed LCA values.
 """)
 
@@ -494,8 +467,8 @@ These are order-of-magnitude estimates for early capital planning, not detailed 
 st.markdown("---")
 st.markdown("""
 <div class="footer">
-    <b>Built for</b> water utilities \u00b7 municipalities \u00b7 city planners \u00b7 public works departments<br>
+    <b>Built for</b> water utilities &middot; municipalities &middot; city planners &middot; public works departments<br>
     Supports capital improvement planning, deferred maintenance decisions, and sustainability-aware infrastructure management.<br><br>
-    Failure Forecasters \u2014 CIVE 580c4 Final Project &nbsp;\u00b7&nbsp; Built with Streamlit & Plotly &nbsp;\u00b7&nbsp; Sample data for demonstration only
+    Failure Forecasters -- CIVE 580c4 Final Project &nbsp;&middot;&nbsp; Built with Streamlit & Plotly &nbsp;&middot;&nbsp; Sample data for demonstration only
 </div>
 """, unsafe_allow_html=True)
