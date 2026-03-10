@@ -29,21 +29,22 @@ st.markdown("""
 /* Global */
 .block-container {padding-top:1.2rem;padding-bottom:2rem;max-width:1100px;}
 
-/* Hero banner */
+/* Hero banner -- compact dashboard header */
 .hero{background:linear-gradient(135deg,#0b3d54 0%,#146b8a 55%,#1a9d8f 100%);
-  border-radius:14px;padding:1rem 2rem .9rem;color:#fff;margin-bottom:1.2rem;}
-.hero h1{font-size:1.45rem;font-weight:700;margin:0 0 .15rem;letter-spacing:-.4px;}
-.hero p{font-size:.82rem;opacity:.88;margin:0;line-height:1.4;max-width:700px;}
+  border-radius:12px;padding:.75rem 1.8rem .7rem;color:#fff;margin-bottom:1rem;
+  display:flex;align-items:center;gap:1.2rem;}
+.hero h1{font-size:1.3rem;font-weight:700;margin:0;letter-spacing:-.3px;white-space:nowrap;}
+.hero p{font-size:.8rem;opacity:.85;margin:0;line-height:1.35;}
 
 /* Step labels */
 .step-label{font-size:.7rem;font-weight:700;text-transform:uppercase;
-  letter-spacing:.1em;color:#64748b;margin-top:1.5rem;margin-bottom:.55rem;
+  letter-spacing:.1em;color:#64748b;margin-top:1.1rem;margin-bottom:.45rem;
   display:flex;align-items:center;gap:.45rem;}
 .step-num{background:#0b3d54;color:#fff;border-radius:5px;
   padding:.1rem .45rem;font-size:.65rem;letter-spacing:.04em;}
 
 /* KPI row */
-.kpi-row{display:flex;gap:.75rem;margin-bottom:.6rem;}
+.kpi-row{display:flex;gap:.75rem;margin-bottom:.4rem;}
 .kpi{flex:1;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;
   padding:.85rem 1rem .7rem;min-width:0;}
 .kpi .kpi-label{font-size:.65rem;font-weight:600;text-transform:uppercase;
@@ -136,39 +137,39 @@ def select_within_budget(df: pd.DataFrame, budget: float) -> pd.DataFrame:
 
 def generate_rationale(row, all_df: pd.DataFrame) -> str:
     """Professional, decision-ready rationale for why an asset was selected."""
-    phrases = []
+    age = int(row["Age (yrs)"])
+    cond = int(row["Condition (1-5)"])
+    conseq = int(row["Failure Consequence"])
     age_pct = row["Age (yrs)"] / all_df["Age (yrs)"].max() if all_df["Age (yrs)"].max() > 0 else 0
 
-    # Build natural-language fragments
-    if row["Condition (1-5)"] >= 4 and row["Failure Consequence"] >= 4:
-        phrases.append(f"Critical condition (rated {int(row['Condition (1-5)'])}/5) with high failure consequence")
-    elif row["Failure Consequence"] >= 4:
-        phrases.append("High failure consequence requiring proactive replacement")
-    elif row["Condition (1-5)"] >= 4:
-        phrases.append(f"Poor condition (rated {int(row['Condition (1-5)'])}/5) indicating near-term failure risk")
-
-    if age_pct >= 0.7 and not phrases:
-        phrases.append(f"Aging asset at {int(row['Age (yrs)'])} years approaching end of useful life")
+    # Primary driver -- the most important reason
+    primary = ""
+    if cond >= 4 and conseq >= 4:
+        primary = f"Condition rated {cond}/5 with catastrophic failure risk"
+    elif conseq >= 4:
+        primary = "High failure consequence warrants proactive replacement"
+    elif cond >= 4:
+        primary = f"Deteriorated condition ({cond}/5) signals near-term failure risk"
     elif age_pct >= 0.7:
-        phrases.append(f"nearing end of useful life at {int(row['Age (yrs)'])} years")
+        primary = f"At {age} years, approaching end of expected service life"
 
+    # Secondary context
+    secondary = ""
+    if primary and age_pct >= 0.7 and "years" not in primary:
+        secondary = f"{age}-year-old asset nearing end of service life"
     if row["Priority Score"] > 0:
-        efficiency = row["Priority Score"] / (row["Upgrade Cost ($K)"] / 100)
-        median_eff = all_df.apply(
+        eff = row["Priority Score"] / (row["Upgrade Cost ($K)"] / 100)
+        med = all_df.apply(
             lambda r: r["Priority Score"] / (r["Upgrade Cost ($K)"] / 100) if r["Priority Score"] > 0 else 0, axis=1
         ).median()
-        if efficiency >= median_eff * 1.2:
-            phrases.append("cost-effective risk reduction")
+        if eff >= med * 1.2:
+            secondary = "favorable cost-to-risk-reduction ratio" if secondary else "Strong cost-to-risk-reduction ratio"
 
-    if not phrases:
-        phrases.append("Fits within current budget with favorable risk profile")
-        return phrases[0]
-
-    # Join: capitalize first phrase, lowercase joiners
-    result = phrases[0]
-    if len(phrases) > 1:
-        result += "; " + "; ".join(phrases[1:])
-    return result
+    if not primary:
+        return "Favorable risk profile within available budget"
+    if secondary:
+        return f"{primary}; {secondary}"
+    return primary
 
 
 # ======================= APP LAYOUT ========================================
@@ -177,8 +178,7 @@ def generate_rationale(row, all_df: pd.DataFrame) -> str:
 st.markdown("""
 <div class="hero">
     <h1>\U0001F4A7 Failure Forecasters</h1>
-    <p>Prioritize water infrastructure upgrades by failure risk, cost, and embodied
-       carbon -- so every capital dollar goes where it matters most.</p>
+    <p>Prioritize water infrastructure upgrades by failure risk, cost, and embodied carbon.</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -290,21 +290,21 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 
-# ---- Portfolio summary sentence ----
+# ---- Portfolio summary ----
 if not selected_df.empty:
     avg_score = selected_df["Priority Score"].mean()
-    st.markdown(
-        f"This plan directs **${total_cost:,.0f}K** ({pct_used:.0f}% of budget) toward "
-        f"**{len(selected_df)} assets** averaging a priority score of **{avg_score:.0f}/100**, "
-        f"addressing **{high_risk} high-risk** asset{'s' if high_risk != 1 else ''} "
-        f"with an estimated **{total_carb:,.1f} t CO2e** of embodied carbon."
+    st.caption(
+        f"{len(selected_df)} assets selected  |  "
+        f"{pct_used:.0f}% of budget allocated  |  "
+        f"{high_risk} high-risk assets addressed  |  "
+        f"Avg. priority {avg_score:.0f}/100  |  "
+        f"{total_carb:,.1f} t CO2e embodied carbon"
     )
 
-# ---- Recommended portfolio (native Streamlit) ----
+# ---- Recommended portfolio ----
 if not selected_df.empty:
-    st.markdown(f"#### Recommended This Cycle")
+    st.markdown("#### Recommended This Cycle")
 
-    # Render asset cards in a 2-column grid with green accent
     rows = list(selected_df.iterrows())
     for i in range(0, len(rows), 2):
         cols = st.columns(2)
@@ -315,26 +315,25 @@ if not selected_df.empty:
             rank_num = i + j + 1
             rationale = generate_rationale(row, scored_df)
             with col:
-                with st.container(border=True):
-                    st.markdown(
-                        f'<span style="background:#059669;color:#fff;padding:2px 8px;'
-                        f'border-radius:4px;font-size:.7rem;font-weight:600;'
-                        f'letter-spacing:.03em;">PRIORITY #{rank_num}</span>',
-                        unsafe_allow_html=True,
-                    )
-                    st.markdown(f"**{row['Asset Name']}**")
-                    st.markdown(
-                        f"<span style='color:#4b5563;font-size:.88rem;'>{rationale}</span>",
-                        unsafe_allow_html=True,
-                    )
-                    st.caption(
-                        f"{row['Asset Type']}  &middot;  "
-                        f"{int(row['Age (yrs)'])} yrs  &middot;  "
-                        f"Condition {int(row['Condition (1-5)'])}/5  &middot;  "
-                        f"Score **{row['Priority Score']:.0f}**/100  &middot;  "
-                        f"**${row['Upgrade Cost ($K)']:,.0f}K**  &middot;  "
-                        f"{row['Carbon (t CO2e)']:.1f} t CO2e"
-                    )
+                # Green left-border card via wrapping div
+                st.markdown(
+                    f'<div style="border-left:4px solid #059669;padding-left:.75rem;margin-bottom:.2rem;">'
+                    f'<span style="background:#059669;color:#fff;padding:1px 7px;'
+                    f'border-radius:3px;font-size:.65rem;font-weight:600;'
+                    f'letter-spacing:.04em;">PRIORITY #{rank_num}</span>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown(f"**{row['Asset Name']}**  \n{rationale}")
+                st.caption(
+                    f"{row['Asset Type']}  &middot;  "
+                    f"{int(row['Age (yrs)'])} yrs  &middot;  "
+                    f"Condition {int(row['Condition (1-5)'])}/5  &middot;  "
+                    f"Score **{row['Priority Score']:.0f}**/100  &middot;  "
+                    f"**${row['Upgrade Cost ($K)']:,.0f}K**  &middot;  "
+                    f"{row['Carbon (t CO2e)']:.1f} t CO2e"
+                )
+                st.divider()
 else:
     st.info("No assets fit within the current budget. Increase the capital budget to see recommendations.")
 
@@ -369,7 +368,7 @@ st.dataframe(styled, use_container_width=True, hide_index=True)
 
 
 # ---- Charts ----
-st.markdown('<div class="step-label" style="margin-top:1.2rem;">Supporting Analysis</div>',
+st.markdown('<div class="step-label" style="margin-top:.8rem;">Supporting Analysis</div>',
             unsafe_allow_html=True)
 
 ch1, ch2 = st.columns(2)
@@ -380,41 +379,49 @@ REC_COLORS = {
     "Defer to Future Cycle":  "#cbd5e1",
 }
 
-# Chart 1 -- Risk vs Cost scatter (improved marker clarity)
+# Chart 1 -- Risk vs Cost scatter
 with ch1:
-    fig1 = px.scatter(
-        ranked_df, x="Upgrade Cost ($K)", y="Priority Score",
-        size="Carbon (t CO2e)", color="Recommendation",
-        hover_name="Asset Name",
-        hover_data={"Priority Score": ":.1f", "Upgrade Cost ($K)": ":$,.0f",
-                    "Carbon (t CO2e)": ":.1f", "Recommendation": False},
-        color_discrete_map=REC_COLORS,
-        size_max=45,
-        category_orders={"Recommendation": list(REC_COLORS.keys())},
-    )
-    # Add marker borders for clarity
-    fig1.update_traces(marker=dict(line=dict(width=1.5, color="white"), opacity=0.9))
+    # Draw deferred first (background), then recommended on top
+    fig1 = go.Figure()
+
+    for rec_label in reversed(list(REC_COLORS.keys())):
+        subset = ranked_df[ranked_df["Recommendation"] == rec_label]
+        if subset.empty:
+            continue
+        is_selected = rec_label != "Defer to Future Cycle"
+        fig1.add_trace(go.Scatter(
+            x=subset["Upgrade Cost ($K)"],
+            y=subset["Priority Score"],
+            mode="markers",
+            name=rec_label,
+            marker=dict(
+                size=subset["Carbon (t CO2e)"] * 1.8 + 10,
+                color=REC_COLORS[rec_label],
+                opacity=0.92 if is_selected else 0.4,
+                line=dict(width=2 if is_selected else 1,
+                          color="white" if is_selected else "#e2e8f0"),
+            ),
+            text=subset["Asset Name"],
+            hovertemplate="<b>%{text}</b><br>Score: %{y:.1f}<br>Cost: $%{x:,.0f}K<extra></extra>",
+        ))
+
     fig1.update_layout(
-        title=dict(text="Risk vs. Cost", font=dict(size=14, color="#334155")),
+        title=dict(text="Risk vs. Cost", font=dict(size=13, color="#334155")),
         plot_bgcolor="#fafcfe", paper_bgcolor="#ffffff",
         font=dict(family="Inter,system-ui,sans-serif", size=11),
-        margin=dict(l=44, r=16, t=48, b=32),
-        legend=dict(orientation="h", yanchor="bottom", y=-0.30,
-                    xanchor="center", x=0.5, font_size=9, title_text=""),
-        height=370,
+        margin=dict(l=44, r=16, t=40, b=20),
+        legend=dict(orientation="h", yanchor="top", y=-0.08,
+                    xanchor="center", x=0.5, font_size=9, title_text="",
+                    bgcolor="rgba(0,0,0,0)"),
+        height=360,
     )
     fig1.update_xaxes(gridcolor="#edf2f7", title_text="Upgrade Cost ($K)", title_font_size=11)
     fig1.update_yaxes(gridcolor="#edf2f7", title_text="Priority Score", title_font_size=11)
     st.plotly_chart(fig1, use_container_width=True)
 
-# Chart 2 -- Investment by Asset (sorted: recommended first by priority, then deferred)
+# Chart 2 -- Investment by Asset (sorted by priority score, highest at top)
 with ch2:
-    # Sort: selected assets by priority descending, then deferred by priority descending
-    # Reverse for horizontal bar (bottom = highest priority)
-    ordered = pd.concat([
-        deferred_df.sort_values("Priority Score", ascending=False),
-        selected_df.sort_values("Priority Score", ascending=False),
-    ])
+    ordered = ranked_df.sort_values("Priority Score", ascending=True).copy()
     bar_colors = [REC_COLORS.get(r, "#cbd5e1") for r in ordered["Recommendation"]]
 
     fig2 = go.Figure()
@@ -423,22 +430,21 @@ with ch2:
         x=ordered["Upgrade Cost ($K)"],
         orientation="h",
         marker_color=bar_colors,
-        marker_line=dict(width=0),
-        text=ordered.apply(
-            lambda r: f"${r['Upgrade Cost ($K)']:,.0f}K  (Score: {r['Priority Score']:.0f})", axis=1
-        ),
+        marker_line=dict(width=0.5, color="white"),
+        text=ordered["Upgrade Cost ($K)"].apply(lambda v: f"${v:,.0f}K"),
         textposition="outside",
         textfont=dict(size=9, color="#475569"),
-        hovertemplate="%{y}<br>Cost: $%{x:,.0f}K<extra></extra>",
+        hovertemplate="<b>%{y}</b><br>Cost: $%{x:,.0f}K<br>Score: %{customdata[0]:.0f}/100<extra></extra>",
+        customdata=ordered[["Priority Score"]].values,
         showlegend=False,
     ))
 
     fig2.update_layout(
-        title=dict(text="Investment by Asset", font=dict(size=14, color="#334155")),
+        title=dict(text="Investment by Asset", font=dict(size=13, color="#334155")),
         plot_bgcolor="#fafcfe", paper_bgcolor="#ffffff",
         font=dict(family="Inter,system-ui,sans-serif", size=11),
-        margin=dict(l=8, r=70, t=48, b=32),
-        height=370,
+        margin=dict(l=8, r=56, t=40, b=20),
+        height=360,
     )
     fig2.update_xaxes(gridcolor="#edf2f7", title_text="Upgrade Cost ($K)", title_font_size=11)
     fig2.update_yaxes(title_text="")
