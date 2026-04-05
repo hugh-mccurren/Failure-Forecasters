@@ -11,7 +11,6 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
-import io
 from datetime import datetime
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -243,8 +242,8 @@ def compute_scores(df: pd.DataFrame, w_age: float, w_cond: float,
     out["age_norm"]    = out["Age (yrs)"] / max_age if max_age > 0 else 0
     out["cond_norm"]   = (out["Condition (1-5)"] - 1) / 4
     out["conseq_norm"] = (out["Failure Consequence"] - 1) / 4
-    max_life = out["Expected Life (yrs)"].max()
-    out["rul_norm"] = 1 - (out["RUL (yrs)"] / max_life) if max_life > 0 else 0
+    max_rul = out["RUL (yrs)"].max()
+    out["rul_norm"] = 1 - (out["RUL (yrs)"] / max_rul) if max_rul > 0 else 0
 
     # ── Criticality boost ──
     crit_boost = out["Critical Asset"].apply(lambda c: 0.10 if c else 0)
@@ -431,8 +430,6 @@ def compute_system_health(df: pd.DataFrame) -> float:
 
 def generate_csv_template() -> str:
     """Generate a CSV template for asset upload."""
-    cols = ["Asset Name", "Asset Type", "Age (yrs)", "Condition (1-5)",
-            "Failure Consequence", "Upgrade Cost ($K)", "Material", "Critical Asset"]
     example = pd.DataFrame({
         "Asset Name": ["Example Pipe 1", "Example Pump 1"],
         "Asset Type": ["Pipe", "Pump"],
@@ -1348,39 +1345,208 @@ with ex3:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# METHODOLOGY
+# HOW TO USE & METHODOLOGY
 # ═══════════════════════════════════════════════════════════════════════════════
 
-with st.expander("📖 Scoring Methodology"):
+with st.expander("📘 How to Use This Tool"):
+    st.markdown("""
+**This tool helps you decide which water infrastructure assets to upgrade first,
+given a limited budget.** Here's how to use each part:
+
+---
+
+**Step 1 — Asset Inventory (the table at the top)**
+
+Enter your assets or upload a CSV/Excel file. Each asset needs:
+- **Asset Name**: A label to identify it (e.g., "Transmission Main A")
+- **Type**: What kind of asset (Pipe, Pump, Tank, Clarifier, Valve, or Hydrant)
+- **Age**: How old the asset is in years
+- **Condition**: Rate from 1 (excellent, like new) to 5 (failed or near failure)
+- **Failure Consequence**: How bad would it be if this asset fails? 1 = minor inconvenience, 5 = catastrophic (e.g., major service outage, public safety risk)
+- **Upgrade Cost**: Estimated cost to replace or rehabilitate, in thousands of dollars
+- **Material**: What the asset is made of — this affects both its expected lifespan and carbon footprint
+- **Critical Asset**: Check this if the asset has no backup or redundancy (single point of failure)
+
+---
+
+**Step 2 — Planning Constraints**
+
+- **Capital Budget**: Your total available budget for this planning cycle. The tool picks the best combination of assets that fit within this amount.
+- **Planning Horizon**: How many years to plan ahead (used in the Multi-Year CIP tab)
+- **Annual Budget**: Per-year budget for the multi-year plan
+
+---
+
+**Step 3 — Results (four tabs)**
+
+**Overview Tab**
+- **KPI cards** at the top show a summary: how many assets are funded, total cost, risk reduction, failure cost avoided, and embodied carbon
+- **System Health gauges** show overall system condition before and after the planned upgrades. Higher is healthier.
+- **Asset cards** show each funded asset with a plain-English explanation of why it was prioritized
+- **Deferred assets** show what didn't make the cut and what it could cost if those assets fail
+- **Full Ranking table** shows every asset sorted by priority score with color-coded recommendations
+
+**Analysis Tab**
+- **Bubble chart** (Risk vs. Cost vs. Carbon): Each bubble is an asset. Position shows risk (vertical) vs. cost (horizontal). Bubble size shows carbon footprint. Assets in the top-left are high risk and low cost — the best value upgrades.
+- **Cumulative Risk Reduction curve**: Shows how much total risk you eliminate as you spend more. The red dashed line is your budget. The "knee" of the curve is where you get the most risk reduction per dollar.
+- **Priority Score bars**: Simple ranking of all assets by their overall priority score
+- **Cost Efficiency bars**: Which assets give you the most risk reduction per $100K spent
+- **Risk Matrix**: A standard 5×5 grid used in asset management. Assets in the lower-right (poor condition + high consequence) are the highest risk.
+
+**Multi-Year CIP Tab**
+- Spreads your assets across multiple budget years. Assets that don't get funded in Year 1 are re-evaluated in Year 2 with slightly worse condition (because they've aged another year). This shows how deferring maintenance creates more urgency over time.
+
+**Scenarios & Sensitivity Tab**
+- **Budget Scenarios**: Compare three different budget levels side by side to see how much more risk you reduce with a bigger budget. Useful for justifying budget requests.
+- **Weight Sensitivity**: Shows whether the rankings change when you use different weighting priorities (e.g., "what if we only cared about condition?" vs. "what if we only cared about remaining life?"). Flat lines mean the ranking is robust. Crossing lines mean the ranking depends on your assumptions.
+
+---
+
+**Sidebar Controls**
+
+- **Priority Weights**: Adjust how much each factor matters. Higher weight = more influence on the ranking. The defaults are balanced, but you can shift them based on your utility's priorities.
+- **Sustainability**: Increase the carbon penalty to push high-carbon upgrades lower in the ranking. Turn on "Favor low-carbon materials" for an additional penalty.
+
+---
+
+**Step 4 — Export**
+
+Download your results as CSV files or a formatted summary report that you can attach to budget requests, council presentations, or grant applications.
+""")
+
+with st.expander("📖 Scoring Methodology & Assumptions"):
     st.markdown(f"""
-**Priority scoring** uses a transparent weighted index — no black-box AI.
+### How the Priority Score Works
 
-| Factor | Weight | Scale | Description |
-|--------|--------|-------|-------------|
-| Asset Age | {w_age:.0%} | Normalized 0–1 | Older assets score higher |
-| Condition | {w_cond:.0%} | 1 (Excellent) → 5 (Failed) | Worse condition scores higher |
-| Failure Consequence | {w_conseq:.0%} | 1 (Minimal) → 5 (Catastrophic) | Higher consequence scores higher |
-| Remaining Useful Life | {w_rul:.0%} | Based on asset type & material | Less remaining life scores higher |
+Each asset gets a score from 0 to 100. Higher = more urgent to upgrade. The score is a
+weighted average of four factors, each normalized to a 0–1 scale:
 
-**Critical assets** receive a +10% priority boost to reflect single-point-of-failure risk.
+| Factor | Current Weight | What It Measures | How It's Normalized |
+|--------|---------------|-------------------|---------------------|
+| Age | {w_age:.0%} | How old the asset is | Divided by the oldest asset's age |
+| Condition | {w_cond:.0%} | Physical state (1=excellent, 5=failed) | (Condition − 1) ÷ 4 |
+| Consequence | {w_conseq:.0%} | Impact if it fails (1=minimal, 5=catastrophic) | (Consequence − 1) ÷ 4 |
+| Remaining Life | {w_rul:.0%} | Years left vs. expected service life | 1 − (RUL ÷ max RUL across all assets) |
 
-**Remaining Useful Life (RUL)** is estimated from industry-standard expected service life
-tables (AWWA/EPA guidelines) by asset type and material combination.
+**Formula**: Priority = (Age × w₁ + Condition × w₂ + Consequence × w₃ + RUL × w₄) ÷ (w₁+w₂+w₃+w₄) × 100
 
-**Budget selection** uses a greedy knapsack: assets are ranked by priority and selected in
-order while they fit the remaining budget. If an asset doesn't fit, the algorithm skips it
-and tries the next, maximizing the count of high-priority upgrades funded.
+**Critical asset boost**: Assets marked as critical (no redundancy) get +10 points added
+to their score. This reflects the higher system-level risk of losing a single point of failure.
 
-**Failure cost** estimates the emergency repair cost if an asset fails before planned
-replacement. Multipliers range from 1.5× (low consequence) to 6× (catastrophic),
-reflecting real-world data on reactive vs. proactive maintenance costs.
+**Why these default weights?** Condition (35%) gets the most weight because it's the
+strongest predictor of near-term failure — an asset in poor condition can fail regardless
+of age. Age (25%) and Consequence (25%) are equal because both matter but neither alone
+determines urgency. Remaining Life (15%) is a refinement that catches assets near
+end-of-life that might look OK on condition alone.
 
-**Carbon estimates** use planning-level embodied carbon factors (kg CO₂e/kg) scaled by
-upgrade cost. These are order-of-magnitude estimates for early capital planning, not
-detailed LCA values.
+---
 
-**Multi-year planning** models condition degradation for deferred assets: assets past their
-expected service life degrade faster, creating realistic urgency in later planning years.
+### Risk Score (separate from Priority)
+
+Risk Score = (Condition ÷ 5) × (Consequence ÷ 5) × 100
+
+This is the standard risk = likelihood × impact formula used in asset management.
+It ranges from 4 (condition 1, consequence 1) to 100 (condition 5, consequence 5).
+This score is used in the Risk Matrix and cost efficiency calculations.
+
+---
+
+### How Budget Selection Works
+
+The tool uses a **greedy knapsack** approach:
+1. Rank all assets by Priority Score (highest first)
+2. Go down the list. If the next asset fits in the remaining budget, fund it.
+3. If it doesn't fit, skip it and try the next one.
+4. Continue until the budget is used up or all assets are checked.
+
+This is simpler than full mathematical optimization, but for typical utility portfolios
+(5–50 assets), it produces results within ~5% of the theoretical optimum while being
+completely transparent and easy to explain to stakeholders.
+
+---
+
+### Remaining Useful Life (RUL)
+
+RUL = Expected Service Life − Current Age (minimum 0)
+
+Expected service life comes from industry reference data based on asset type and material:
+
+| Asset Type | Material | Expected Life (yrs) | Source |
+|-----------|----------|--------------------:|--------|
+| Pipe | Cast Iron | 90 | AWWA M28 |
+| Pipe | Ductile Iron | 90 | AWWA M41 |
+| Pipe | HDPE | 75 | PPI TR-3 |
+| Pipe | PVC | 80 | Uni-Bell |
+| Pipe | Steel | 65 | AWWA M11 |
+| Pipe | Copper | 70 | CDA |
+| Pump | Steel | 20 | AWWA M14 |
+| Tank | Concrete | 65 | AWWA D110 |
+| Tank | Steel | 50 | AWWA D100 |
+| Clarifier | Concrete | 50 | WEF MOP 8 |
+| Clarifier | Steel | 40 | WEF MOP 8 |
+
+These are planning-level estimates. Actual service life varies based on soil conditions,
+water quality, maintenance history, and operating environment.
+
+---
+
+### Failure Cost (Cost of Doing Nothing)
+
+If an asset fails before planned replacement, emergency repairs typically cost significantly
+more than proactive upgrades. The multipliers used are:
+
+| Consequence Level | Multiplier | Example |
+|-------------------|-----------|---------|
+| 1 – Minimal | 1.5× | Minor leak repair |
+| 2 – Low | 2.0× | Service disruption, small area |
+| 3 – Moderate | 3.0× | Neighborhood outage, road damage |
+| 4 – High | 4.5× | Major service loss, regulatory violation |
+| 5 – Catastrophic | 6.0× | System-wide failure, public safety risk |
+
+These ranges are consistent with findings from AWWA's "Buried No Longer" report and
+EPA infrastructure assessments, which document reactive-to-proactive cost ratios of
+3–10× depending on asset type and failure severity.
+
+---
+
+### Carbon Estimates
+
+Embodied carbon is estimated using: Carbon (t CO₂e) = Carbon Factor × Cost ($K) × 120 ÷ 1000
+
+- **Carbon Factor**: kg CO₂e per kg of material (from ICE Database v3.0 and EPD data)
+- **120**: Estimated kg of material per $1,000 of upgrade cost (planning-level assumption)
+- The result is in metric tons of CO₂ equivalent
+
+| Material | Carbon Factor (kg CO₂e/kg) |
+|----------|---------------------------:|
+| Concrete | 0.15 |
+| Ductile Iron | 1.80 |
+| Cast Iron | 1.90 |
+| Steel | 2.10 |
+| HDPE | 2.50 |
+| PVC | 3.00 |
+| Copper | 3.80 |
+| FRP | 8.00 |
+
+**Important**: These are order-of-magnitude estimates for comparing material choices during
+early planning. They are not detailed Life Cycle Assessment (LCA) values. The "120 kg per
+$1K" assumption is a rough industry average — actual material quantities depend on pipe
+diameter, wall thickness, and installation method.
+
+---
+
+### Multi-Year Condition Degradation
+
+When an asset is deferred to a future year, the tool simulates aging:
+- **Age increases by 1 year** for each year deferred
+- **Condition degrades** at a rate based on how close the asset is to end-of-life:
+  - Past expected service life (≥100%): **+0.5** condition points per year (rapid decline)
+  - Near end-of-life (≥80%): **+0.3** per year (accelerating)
+  - Still within service life (<80%): **+0.1** per year (slow, normal aging)
+- Condition is capped at 5 (Failed)
+
+This creates realistic urgency: an asset you defer today becomes a higher priority next
+year because its condition has worsened, which is how real infrastructure behaves.
 """)
 
 
