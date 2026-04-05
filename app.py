@@ -12,6 +12,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
 from datetime import datetime
+from fpdf import FPDF
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE CONFIG
@@ -443,66 +444,167 @@ def generate_csv_template() -> str:
     return example.to_csv(index=False)
 
 
-def generate_report(ranked_df: pd.DataFrame, selected_df: pd.DataFrame,
-                    budget: float, scored_df: pd.DataFrame) -> str:
-    """Generate a plain-text summary report for download."""
+def generate_pdf(ranked_df: pd.DataFrame, selected_df: pd.DataFrame,
+                  deferred_df: pd.DataFrame, budget: float,
+                  scored_df: pd.DataFrame, health_before: float,
+                  health_after: float) -> bytes:
+    """Generate a PDF summary report."""
     total_cost = selected_df["Upgrade Cost ($K)"].sum()
     total_carbon = selected_df["Carbon (t CO2e)"].sum()
     risk_reduced = selected_df["Risk Score"].sum() if not selected_df.empty else 0
     total_risk = ranked_df["Risk Score"].sum()
     risk_pct = (risk_reduced / total_risk * 100) if total_risk > 0 else 0
+    avoided_cost = selected_df["Deferral Risk ($K)"].sum() if not selected_df.empty else 0
 
-    lines = [
-        "=" * 70,
-        "FAILURE FORECASTERS — CAPITAL IMPROVEMENT PLAN SUMMARY",
-        f"Generated: {datetime.now().strftime('%B %d, %Y')}",
-        "=" * 70, "",
-        "BUDGET & INVESTMENT",
-        f"  Capital Budget:        ${budget:>10,.0f}K",
-        f"  Planned Investment:    ${total_cost:>10,.0f}K",
-        f"  Budget Remaining:      ${budget - total_cost:>10,.0f}K",
-        f"  Budget Utilization:    {total_cost / budget * 100 if budget > 0 else 0:>9.0f}%",
-        "",
-        "RISK & SUSTAINABILITY",
-        f"  System Risk Reduction: {risk_pct:>9.0f}%",
-        f"  Assets Addressed:      {len(selected_df):>9d} of {len(ranked_df)}",
-        f"  Embodied Carbon:       {total_carbon:>9.1f} t CO2e",
-        "",
-        "-" * 70,
-        "RECOMMENDED UPGRADES (Priority Order)",
-        "-" * 70,
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=20)
+    pdf.add_page()
+
+    # ── Title ──
+    pdf.set_font("Helvetica", "B", 18)
+    pdf.set_text_color(12, 45, 72)
+    pdf.cell(0, 12, "Failure Forecasters", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(100, 116, 139)
+    pdf.cell(0, 6, "Capital Improvement Plan Summary", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 6, f"Generated: {datetime.now().strftime('%B %d, %Y')}", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(4)
+
+    # ── KPI Summary ──
+    pdf.set_draw_color(200, 200, 200)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(4)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.set_text_color(15, 23, 42)
+    pdf.cell(0, 7, "Plan Overview", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(51, 65, 85)
+
+    kpi_data = [
+        ("Capital Budget", f"${budget:,.0f}K"),
+        ("Planned Investment", f"${total_cost:,.0f}K ({total_cost / budget * 100 if budget > 0 else 0:.0f}% of budget)"),
+        ("Budget Remaining", f"${budget - total_cost:,.0f}K"),
+        ("Assets Selected", f"{len(selected_df)} of {len(ranked_df)}"),
+        ("System Risk Reduction", f"{risk_pct:.0f}%"),
+        ("Failure Cost Avoided", f"${avoided_cost:,.0f}K"),
+        ("System Health", f"{health_before:.0f}/100 -> {health_after:.0f}/100 (+{health_after - health_before:.0f} pts)"),
+        ("Embodied Carbon", f"{total_carbon:,.1f} t CO2e"),
     ]
+    for label, value in kpi_data:
+        pdf.cell(65, 6, f"  {label}:", new_x="RIGHT")
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.cell(0, 6, value, new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 10)
+
+    pdf.ln(4)
+
+    # ── Recommended Upgrades Table ──
+    pdf.set_draw_color(200, 200, 200)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(4)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.set_text_color(15, 23, 42)
+    pdf.cell(0, 7, "Recommended Upgrades", new_x="LMARGIN", new_y="NEXT")
+
+    # Table header
+    pdf.set_font("Helvetica", "B", 8)
+    pdf.set_fill_color(241, 245, 249)
+    pdf.set_text_color(51, 65, 85)
+    col_widths = [44, 18, 14, 12, 14, 18, 18, 18, 34]
+    headers = ["Asset", "Type", "Age", "Cond", "Conseq", "Cost($K)", "Risk", "CO2e(t)", "Recommendation"]
+    for i, h in enumerate(headers):
+        pdf.cell(col_widths[i], 6, h, border=1, fill=True, align="C")
+    pdf.ln()
+
+    # Table rows
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_text_color(51, 65, 85)
+    for _, row in ranked_df.iterrows():
+        rec = row.get("Recommendation", "")
+        if rec == "Recommended This Cycle":
+            pdf.set_fill_color(220, 252, 231)
+        elif rec == "Near-Term Candidate":
+            pdf.set_fill_color(254, 249, 195)
+        else:
+            pdf.set_fill_color(241, 245, 249)
+
+        vals = [
+            str(row["Asset Name"])[:22],
+            str(row["Asset Type"]),
+            str(int(row["Age (yrs)"])),
+            str(int(row["Condition (1-5)"])),
+            str(int(row["Failure Consequence"])),
+            f"${row['Upgrade Cost ($K)']:,.0f}",
+            f"{row['Risk Score']:.0f}",
+            f"{row['Carbon (t CO2e)']:.1f}",
+            rec[:18],
+        ]
+        for i, v in enumerate(vals):
+            align = "L" if i == 0 else "C"
+            pdf.cell(col_widths[i], 5.5, v, border=1, fill=True, align=align)
+        pdf.ln()
+
+    pdf.ln(4)
+
+    # ── Rationales ──
+    pdf.set_draw_color(200, 200, 200)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(4)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.set_text_color(15, 23, 42)
+    pdf.cell(0, 7, "Prioritization Rationale", new_x="LMARGIN", new_y="NEXT")
 
     for i, (_, row) in enumerate(selected_df.iterrows(), 1):
         rationale = generate_rationale(row, scored_df)
-        lines.extend([
-            f"  #{i}  {row['Asset Name']}",
-            f"       Type: {row['Asset Type']}  |  Age: {int(row['Age (yrs)'])} yrs  |  "
-            f"Condition: {int(row['Condition (1-5)'])}/5  |  Consequence: {int(row['Failure Consequence'])}/5",
-            f"       Cost: ${row['Upgrade Cost ($K)']:,.0f}K  |  "
-            f"Carbon: {row['Carbon (t CO2e)']:.1f} t CO2e  |  "
-            f"Priority: {row['Priority Score']:.0f}/100",
-            f"       Rationale: {rationale}",
-            "",
-        ])
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_text_color(5, 150, 105)
+        pdf.cell(0, 6, f"  #{i}  {row['Asset Name']}", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(71, 85, 105)
+        pdf.multi_cell(0, 5, f"      {rationale}")
+        pdf.ln(1)
 
-    deferred = ranked_df[~ranked_df["Selected"]]
-    if not deferred.empty:
-        lines.extend(["", "-" * 70, "DEFERRED ASSETS", "-" * 70])
-        for _, row in deferred.iterrows():
-            lines.append(
-                f"  {row['Asset Name']:30s}  Priority: {row['Priority Score']:5.1f}  "
-                f"Cost: ${row['Upgrade Cost ($K)']:>8,.0f}K  "
-                f"Failure Risk: ${row['Failure Cost ($K)']:>8,.0f}K"
-            )
+    if not deferred_df.empty:
+        pdf.ln(2)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.set_text_color(15, 23, 42)
+        pdf.cell(0, 7, "Deferred Assets", new_x="LMARGIN", new_y="NEXT")
+        for _, row in deferred_df.iterrows():
+            pdf.set_font("Helvetica", "B", 9)
+            pdf.set_text_color(217, 119, 6)
+            pdf.cell(0, 6, f"  {row['Asset Name']}", new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font("Helvetica", "", 9)
+            pdf.set_text_color(71, 85, 105)
+            pdf.multi_cell(0, 5,
+                f"      Cost: ${row['Upgrade Cost ($K)']:,.0f}K  |  "
+                f"Failure cost if deferred: ${row['Failure Cost ($K)']:,.0f}K  |  "
+                f"Priority: {row['Priority Score']:.0f}/100")
+            pdf.ln(1)
 
-    lines.extend([
-        "", "=" * 70,
-        "Failure Forecasters — CIVE 580c4 Final Project",
-        "This report is for planning purposes. Carbon estimates are order-of-magnitude.",
-        "=" * 70,
-    ])
-    return "\n".join(lines)
+    # ── Footer ──
+    pdf.ln(6)
+    pdf.set_draw_color(200, 200, 200)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(3)
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_text_color(148, 163, 184)
+    pdf.cell(0, 5, "Failure Forecasters - CIVE 580c4 Final Project", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 5, "This report is for planning purposes. Carbon estimates are order-of-magnitude.", new_x="LMARGIN", new_y="NEXT")
+
+    return pdf.output()
+
+
+def generate_csv_export(ranked_df: pd.DataFrame) -> str:
+    """Generate a comprehensive CSV export of all asset data and scores."""
+    export_cols = [c for c in [
+        "Asset Name", "Asset Type", "Age (yrs)", "Condition (1-5)",
+        "Failure Consequence", "Upgrade Cost ($K)", "Material", "Critical Asset",
+        "Expected Life (yrs)", "RUL (yrs)", "Life Used (%)",
+        "Priority Score", "Risk Score", "Carbon (t CO2e)",
+        "Failure Cost ($K)", "Deferral Risk ($K)",
+        "Risk Reduction per $100K", "Recommendation",
+    ] if c in ranked_df.columns]
+    return ranked_df[export_cols].to_csv(index=False)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -651,6 +753,12 @@ ranked_df["Recommendation"] = ranked_df.apply(label_recommendation, axis=1)
 selected_df = ranked_df[ranked_df["Selected"]].copy()
 deferred_df = ranked_df[~ranked_df["Selected"]].copy()
 
+# ── System Health (needed by Overview + PDF export) ──
+health_before = compute_system_health(scored_df)
+after_df = scored_df.copy()
+after_df.loc[after_df["Asset Name"].isin(selected_df["Asset Name"]), "Condition (1-5)"] = 1
+health_after = compute_system_health(after_df)
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # STEP 3 — Results Dashboard (Tabbed)
@@ -715,11 +823,6 @@ with tab_overview:
     """, unsafe_allow_html=True)
 
     # ── Before / After System Health ──
-    health_before = compute_system_health(scored_df)
-    # After: assume upgraded assets reset to condition 1
-    after_df = scored_df.copy()
-    after_df.loc[after_df["Asset Name"].isin(selected_df["Asset Name"]), "Condition (1-5)"] = 1
-    health_after = compute_system_health(after_df)
 
     hc1, hc2 = st.columns(2)
     with hc1:
@@ -1314,34 +1417,20 @@ with tab_sensitivity:
 st.markdown('<div class="section-hdr"><span class="num">4</span> Export & Reports</div>',
             unsafe_allow_html=True)
 
-ex1, ex2, ex3 = st.columns(3)
+ex1, ex2 = st.columns(2)
 
 with ex1:
-    csv_data = ranked_df[[c for c in ["Asset Name","Asset Type","Priority Score","Risk Score",
-                                       "Upgrade Cost ($K)","Failure Cost ($K)","RUL (yrs)",
-                                       "Life Used (%)","Carbon (t CO2e)","Recommendation",
-                                       "Critical Asset"] if c in ranked_df.columns]].to_csv(index=False)
-    st.download_button("📊 Download Full Ranking (CSV)", data=csv_data,
-                       file_name="asset_ranking.csv", mime="text/csv",
-                       use_container_width=True)
+    pdf_bytes = generate_pdf(ranked_df, selected_df, deferred_df, budget,
+                             scored_df, health_before, health_after)
+    st.download_button("📄 Download PDF Summary", data=pdf_bytes,
+                       file_name=f"cip_report_{datetime.now().strftime('%Y%m%d')}.pdf",
+                       mime="application/pdf", use_container_width=True)
 
 with ex2:
-    report_text = generate_report(ranked_df, selected_df, budget, scored_df)
-    st.download_button("📝 Download Summary Report", data=report_text,
-                       file_name=f"cip_report_{datetime.now().strftime('%Y%m%d')}.txt",
-                       mime="text/plain", use_container_width=True)
-
-with ex3:
-    if year_plans:
-        all_years = pd.concat([ydf for ydf in year_plans if not ydf.empty], ignore_index=True)
-        if not all_years.empty:
-            myp_cols = [c for c in ["Plan Year","Asset Name","Asset Type","Priority Score",
-                                     "Upgrade Cost ($K)","Risk Score","Carbon (t CO2e)"]
-                        if c in all_years.columns]
-            myp_csv = all_years[myp_cols].to_csv(index=False)
-            st.download_button("📅 Download Multi-Year Plan (CSV)", data=myp_csv,
-                               file_name="multi_year_cip.csv", mime="text/csv",
-                               use_container_width=True)
+    csv_export = generate_csv_export(ranked_df)
+    st.download_button("📊 Download Full Data (CSV)", data=csv_export,
+                       file_name=f"asset_data_{datetime.now().strftime('%Y%m%d')}.csv",
+                       mime="text/csv", use_container_width=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
