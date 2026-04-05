@@ -101,7 +101,8 @@ section[data-testid="stSidebar"] .stMarkdown h3{font-size:.85rem;font-weight:700
   padding-top:.8rem;line-height:1.6;}
 
 /* ── Chrome ── */
-#MainMenu{visibility:hidden;}footer{visibility:hidden;}header{visibility:hidden;}
+#MainMenu{visibility:hidden;}footer{visibility:hidden;}
+header[data-testid="stHeader"]{background:transparent;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -204,19 +205,23 @@ def get_expected_life(asset_type: str, material: str) -> int:
 
 
 def get_default_assets() -> pd.DataFrame:
+    # 5 demo assets — each tells a different story for presentation:
+    #  1. Transmission Main A     — old cast iron, failing, catastrophic consequence (obvious #1)
+    #  2. Booster Pump Station 1  — critical pump near end of 20-yr life, triggers RUL warning
+    #  3. Storage Reservoir B     — big expensive tank, high consequence but condition still OK
+    #  4. WWTP Clarifier #2      — aging steel clarifier, moderate risk, shows mid-tier ranking
+    #  5. Distribution Line C    — younger copper line, low consequence, shows deferral logic
     return pd.DataFrame({
-        "Asset Name":          ["Main St Trunk Line", "Elm St Distribution", "North Pump Station",
-                                "Central Reservoir",  "WWTP Clarifier #2",   "Oak Ave Service Line",
-                                "South Booster Pump", "River Rd Main",       "Hilltop Storage Tank",
-                                "Downtown PRV Vault"],
-        "Asset Type":          ["Pipe","Pipe","Pump","Tank","Clarifier","Pipe","Pump","Pipe","Tank","Valve"],
-        "Age (yrs)":           [65, 42, 28, 55, 35, 78, 15, 50, 40, 30],
-        "Condition (1-5)":     [4,  3,  2,  4,  3,  5,  1,  3,  2,  3],
-        "Failure Consequence": [5,  3,  4,  5,  4,  2,  3,  4,  3,  2],
-        "Upgrade Cost ($K)":   [1200, 450, 380, 2100, 780, 180, 290, 620, 950, 85],
-        "Material":            ["Cast Iron","Ductile Iron","Steel","Concrete",
-                                "Concrete","Cast Iron","Steel","HDPE","Concrete","Ductile Iron"],
-        "Critical Asset":      [True, False, True, True, True, False, False, True, False, False],
+        "Asset Name":          ["Transmission Main A", "Booster Pump Station 1",
+                                "Storage Reservoir B",  "WWTP Clarifier #2",
+                                "Distribution Line C"],
+        "Asset Type":          ["Pipe", "Pump", "Tank", "Clarifier", "Pipe"],
+        "Age (yrs)":           [72, 18, 45, 32, 25],
+        "Condition (1-5)":     [4,  3,  3,  3,  2],
+        "Failure Consequence": [5,  4,  5,  3,  2],
+        "Upgrade Cost ($K)":   [1200, 380, 2100, 780, 180],
+        "Material":            ["Cast Iron", "Steel", "Concrete", "Steel", "Copper"],
+        "Critical Asset":      [True, True, True, False, False],
     })
 
 
@@ -304,8 +309,9 @@ def select_within_budget(df: pd.DataFrame, budget: float) -> pd.DataFrame:
 
 def label_recommendation(row) -> str:
     if row["Selected"]:
-        return "Recommended This Cycle" if row["Priority Score"] >= 35 else "Near-Term Candidate"
-    return "Defer to Future Cycle"
+        return "Recommended This Cycle"
+    # Not selected: near-term if score is decent, otherwise defer
+    return "Near-Term Candidate" if row["Priority Score"] >= 40 else "Defer to Future Cycle"
 
 
 def generate_rationale(row, all_df: pd.DataFrame) -> str:
@@ -334,14 +340,17 @@ def generate_rationale(row, all_df: pd.DataFrame) -> str:
     if is_critical and "Critical" not in " ".join(parts):
         parts.append("critical single-point-of-failure asset")
 
-    # Cost efficiency context
-    if row["Priority Score"] > 0 and row["Upgrade Cost ($K)"] > 0:
+    # Cost efficiency context — only mention if the asset actually has meaningful risk
+    if row["Priority Score"] > 0 and row["Upgrade Cost ($K)"] > 0 and row["Risk Score"] >= 20:
         eff = row["Risk Reduction per $100K"]
         med = all_df["Risk Reduction per $100K"].median()
         if eff >= med * 1.3:
             parts.append("strong cost-to-risk-reduction ratio")
 
+    # Low-risk, low-cost assets: be honest about why they were selected
     if not parts:
+        if conseq <= 2 and cond <= 2:
+            return "Low-risk asset funded with remaining budget capacity"
         return "Favorable risk profile within available budget"
     return "; ".join(parts[:3])
 
@@ -620,8 +629,15 @@ with pc2:
     plan_years = st.number_input("Planning Horizon (yrs)", min_value=1, max_value=10, value=5, step=1,
                                  help="Number of years for multi-year CIP.")
 with pc3:
+    # Default annual budget: at least enough to fund the single most expensive asset,
+    # so every asset can be scheduled in some year
+    total_asset_cost = valid_df["Upgrade Cost ($K)"].sum() if "Upgrade Cost ($K)" in valid_df.columns else budget
+    smart_default = max(
+        int(total_asset_cost / max(plan_years, 1)),  # spread evenly
+        int(valid_df["Upgrade Cost ($K)"].max()) if "Upgrade Cost ($K)" in valid_df.columns else 0,  # cover largest asset
+    )
     yearly_budget = st.number_input("Annual Budget ($K)", min_value=0,
-                                    value=int(budget / max(plan_years, 1)), step=100,
+                                    value=smart_default, step=100,
                                     help="Per-year budget for multi-year planning.")
 
 
@@ -695,7 +711,7 @@ with tab_overview:
       <div class="kpi">
         <div class="kpi-label">Embodied Carbon</div>
         <div class="kpi-value">{total_carbon:,.1f} t</div>
-        <div class="kpi-sub">CO₂e across selected upgrades</div>
+        <div class="kpi-sub">CO₂e ≈ {total_carbon / 4.6:.0f} households' annual emissions</div>
       </div>
     </div>
     """, unsafe_allow_html=True)
@@ -787,15 +803,32 @@ with tab_overview:
     else:
         st.info("No assets fit within the current budget. Increase the capital budget or adjust priorities.")
 
-    # ── Deferred assets summary ──
+    # ── Deferred assets ──
     if not deferred_df.empty:
         st.markdown("#### Deferred — Future Cycles")
+        total_deferred_cost = deferred_df["Upgrade Cost ($K)"].sum()
         total_deferred_risk = deferred_df["Failure Cost ($K)"].sum()
-        st.caption(
-            f"{len(deferred_df)} assets deferred  ·  "
-            f"${deferred_df['Upgrade Cost ($K)'].sum():,.0f}K total cost  ·  "
-            f"**${total_deferred_risk:,.0f}K potential failure cost** if left unaddressed"
-        )
+
+        for _, row in deferred_df.iterrows():
+            with st.container(border=True):
+                rationale_d = generate_rationale(row, scored_df)
+                st.markdown(
+                    f'<div class="asset-card defer-card">'
+                    f'<span class="asset-rank defer-rank">DEFERRED</span>'
+                    f'<div class="asset-name">{row["Asset Name"]}</div></div>',
+                    unsafe_allow_html=True,
+                )
+                st.caption(
+                    f"{row['Asset Type']}  ·  "
+                    f"{int(row['Age (yrs)'])} yrs  ·  "
+                    f"Condition {int(row['Condition (1-5)'])}/5  ·  "
+                    f"**${row['Upgrade Cost ($K)']:,.0f}K** upgrade  ·  "
+                    f"**${row['Failure Cost ($K)']:,.0f}K** if it fails"
+                )
+                st.markdown(
+                    f"_Deferred because upgrade cost (${row['Upgrade Cost ($K)']:,.0f}K) "
+                    f"exceeds remaining budget. {rationale_d}_"
+                )
 
     # ── Full ranking table ──
     st.markdown("#### Full Asset Ranking")
@@ -856,12 +889,17 @@ with tab_analysis:
             hover_data={"Upgrade Cost ($K)": ":$,.0f", "Risk Score": ":.1f",
                         "Carbon (t CO2e)": ":.1f", "Priority Score": ":.1f",
                         "Bubble Size": False, "Recommendation": True},
+            text="Asset Name",
             size_max=45,
         )
+        fig_bubble.update_traces(
+            textposition="top center",
+            textfont=dict(size=9, color="#334155"),
+        )
         fig_bubble.update_layout(
-            **CHART_LAYOUT, height=380, margin=dict(l=8, r=30, t=44, b=28),
+            **CHART_LAYOUT, height=400, margin=dict(l=8, r=30, t=44, b=50),
             showlegend=True,
-            legend=dict(orientation="h", yanchor="bottom", y=-0.25, xanchor="center", x=0.5,
+            legend=dict(orientation="h", yanchor="bottom", y=-0.22, xanchor="center", x=0.5,
                         font=dict(size=10)),
             xaxis_title="Upgrade Cost ($K)", yaxis_title="Risk Score",
         )
@@ -967,34 +1005,47 @@ with tab_analysis:
     st.markdown("**Risk Assessment Matrix**")
     st.caption("Classic 5×5 condition vs. consequence matrix. Dots show asset positions.")
 
-    # Build heatmap grid
+    # Build heatmap grid — rows ordered so 5-Failed is at top (conventional risk matrix)
+    cond_labels = ["5-Failed", "4-Poor", "3-Fair", "2-Good", "1-Excellent"]
+    cons_labels = ["1-Minimal", "2-Low", "3-Moderate", "4-High", "5-Catastrophic"]
     matrix = np.zeros((5, 5))
-    for i in range(1, 6):
-        for j in range(1, 6):
-            matrix[i - 1][j - 1] = (i / 5) * (j / 5) * 100
+    for ri, cond_val in enumerate([5, 4, 3, 2, 1]):  # top row = 5-Failed
+        for ci, cons_val in enumerate([1, 2, 3, 4, 5]):
+            matrix[ri][ci] = (cond_val / 5) * (cons_val / 5) * 100
 
     fig_matrix = go.Figure()
 
     # Heatmap background
     fig_matrix.add_trace(go.Heatmap(
-        z=matrix, x=["1-Minimal","2-Low","3-Moderate","4-High","5-Catastrophic"],
-        y=["1-Excellent","2-Good","3-Fair","4-Poor","5-Failed"],
+        z=matrix, x=cons_labels, y=cond_labels,
         colorscale=[[0, "#dcfce7"], [0.3, "#fef9c3"], [0.6, "#fed7aa"], [1, "#fecaca"]],
         showscale=False, hoverinfo="skip",
     ))
 
-    # Asset dots
+    # Asset dots — use short label (e.g. "Main A", "Pump 1") for readability
+    def short_label(name: str) -> str:
+        """Create a readable short label from the asset name."""
+        parts = name.split()
+        if len(parts) >= 2:
+            # Drop generic leading words like "Transmission", "Booster", "Storage", "Distribution"
+            skip = {"Transmission", "Booster", "Storage", "Distribution", "WWTP"}
+            filtered = [p for p in parts if p not in skip]
+            return " ".join(filtered[:2]) if filtered else " ".join(parts[-2:])
+        return name
+
     for _, row in ranked_df.iterrows():
-        cond_idx = int(row["Condition (1-5)"]) - 1
-        cons_idx = int(row["Failure Consequence"]) - 1
-        jitter_x = np.random.uniform(-0.15, 0.15)
-        jitter_y = np.random.uniform(-0.15, 0.15)
+        cond_val = int(row["Condition (1-5)"])
+        cons_idx = int(row["Failure Consequence"]) - 1  # x: 0-4 maps to consequence 1-5
+        cond_idx = 5 - cond_val  # y: flipped so 5-Failed=row 0 (top), 1-Excellent=row 4 (bottom)
+        jitter_x = np.random.uniform(-0.12, 0.12)
+        jitter_y = np.random.uniform(-0.12, 0.12)
         color = REC_COLORS.get(row["Recommendation"], "#64748b")
+        label = short_label(row["Asset Name"])
         fig_matrix.add_trace(go.Scatter(
             x=[cons_idx + jitter_x], y=[cond_idx + jitter_y],
-            mode="markers+text", marker=dict(size=14, color=color, line=dict(width=1.5, color="#fff")),
-            text=[row["Asset Name"].split()[0]],
-            textposition="top center", textfont=dict(size=8, color="#334155"),
+            mode="markers+text", marker=dict(size=18, color=color, line=dict(width=2, color="#fff")),
+            text=[label],
+            textposition="top center", textfont=dict(size=10, color="#1e293b", weight=600),
             hovertemplate=f"<b>{row['Asset Name']}</b><br>"
                           f"Condition: {int(row['Condition (1-5)'])}/5<br>"
                           f"Consequence: {int(row['Failure Consequence'])}/5<br>"
@@ -1005,9 +1056,9 @@ with tab_analysis:
     fig_matrix.update_layout(
         **CHART_LAYOUT, height=400,
         xaxis=dict(title="Failure Consequence", tickvals=list(range(5)),
-                   ticktext=["1-Minimal","2-Low","3-Moderate","4-High","5-Catastrophic"]),
+                   ticktext=cons_labels),
         yaxis=dict(title="Condition", tickvals=list(range(5)),
-                   ticktext=["1-Excellent","2-Good","3-Fair","4-Poor","5-Failed"]),
+                   ticktext=cond_labels),
         margin=dict(l=10, r=20, t=30, b=40),
     )
     st.plotly_chart(fig_matrix, use_container_width=True)
@@ -1135,13 +1186,13 @@ with tab_sensitivity:
 
     sc1, sc2, sc3 = st.columns(3)
     with sc1:
-        budget_a = st.number_input("Scenario A ($K)", value=int(budget * 0.6), step=100, key="ba")
+        budget_a = st.number_input("Constrained ($K)", value=max(int(budget * 0.35), 100), step=100, key="ba")
     with sc2:
-        budget_b = st.number_input("Scenario B ($K)", value=budget, step=100, key="bb")
+        budget_b = st.number_input("Baseline ($K)", value=budget, step=100, key="bb")
     with sc3:
-        budget_c = st.number_input("Scenario C ($K)", value=int(budget * 1.5), step=100, key="bc")
+        budget_c = st.number_input("Expanded ($K)", value=int(budget * 1.8), step=100, key="bc")
 
-    scenarios = {"A": budget_a, "B": budget_b, "C": budget_c}
+    scenarios = {"Constrained": budget_a, "Baseline": budget_b, "Expanded": budget_c}
     scenario_results = []
     for label, bgt in scenarios.items():
         sel = select_within_budget(scored_df, bgt)
@@ -1185,6 +1236,10 @@ with tab_sensitivity:
     fig_scen.update_xaxes(gridcolor="#edf2f7")
     fig_scen.update_yaxes(gridcolor="#edf2f7")
     st.plotly_chart(fig_scen, use_container_width=True)
+    st.caption(
+        "Use this to justify budget requests: show stakeholders the risk reduction "
+        "gained by increasing the budget, or the consequences of cutting it."
+    )
 
     st.markdown("---")
 
@@ -1216,21 +1271,21 @@ with tab_sensitivity:
 
     sens_df = pd.DataFrame(sensitivity_data)
 
-    # Bump chart: rank by profile
+    # Bump chart: rank by profile — unique colors per asset so lines are distinguishable
+    ASSET_COLORS = ["#0d9488", "#2563eb", "#d97706", "#dc2626", "#7c3aed",
+                    "#059669", "#0284c7", "#ca8a04", "#e11d48", "#6d28d9"]
     fig_sens = go.Figure()
     profile_names = list(profiles.keys())
-    for asset_name in valid_df["Asset Name"].unique():
+    for i, asset_name in enumerate(valid_df["Asset Name"].unique()):
         asset_sens = sens_df[sens_df["Asset"] == asset_name]
         ranks = [asset_sens[asset_sens["Profile"] == p]["Rank"].values[0]
                  for p in profile_names if len(asset_sens[asset_sens["Profile"] == p]) > 0]
-        # Color based on current recommendation
-        asset_rec = ranked_df[ranked_df["Asset Name"] == asset_name]["Recommendation"].values
-        color = REC_COLORS.get(asset_rec[0] if len(asset_rec) > 0 else "", "#94a3b8")
+        color = ASSET_COLORS[i % len(ASSET_COLORS)]
         fig_sens.add_trace(go.Scatter(
             x=profile_names, y=ranks,
             mode="lines+markers", name=asset_name,
-            line=dict(width=2, color=color),
-            marker=dict(size=8, color=color),
+            line=dict(width=2.5, color=color),
+            marker=dict(size=10, color=color),
             hovertemplate=f"<b>{asset_name}</b><br>Profile: %{{x}}<br>Rank: %{{y}}<extra></extra>",
         ))
 
