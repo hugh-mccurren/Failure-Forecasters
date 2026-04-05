@@ -1255,10 +1255,10 @@ with tab_sensitivity:
 
     profiles = {
         "Current":        {"age": w_age, "cond": w_cond, "conseq": w_conseq, "rul": w_rul},
-        "Age-Focused":    {"age": 0.50, "cond": 0.20, "conseq": 0.15, "rul": 0.15},
-        "Condition-First": {"age": 0.15, "cond": 0.50, "conseq": 0.20, "rul": 0.15},
-        "Risk-Averse":    {"age": 0.10, "cond": 0.25, "conseq": 0.50, "rul": 0.15},
-        "Life-Based":     {"age": 0.15, "cond": 0.20, "conseq": 0.20, "rul": 0.45},
+        "Age-Focused":    {"age": 0.80, "cond": 0.05, "conseq": 0.05, "rul": 0.10},
+        "Condition-First": {"age": 0.05, "cond": 0.80, "conseq": 0.10, "rul": 0.05},
+        "Risk-Averse":    {"age": 0.05, "cond": 0.10, "conseq": 0.80, "rul": 0.05},
+        "Life-Based":     {"age": 0.05, "cond": 0.05, "conseq": 0.05, "rul": 0.85},
     }
 
     sensitivity_data = []
