@@ -591,7 +591,7 @@ def generate_pdf(ranked_df: pd.DataFrame, selected_df: pd.DataFrame,
     pdf.cell(0, 5, "Failure Forecasters - CIVE 580c4 Final Project", new_x="LMARGIN", new_y="NEXT")
     pdf.cell(0, 5, "This report is for planning purposes. Carbon estimates are order-of-magnitude.", new_x="LMARGIN", new_y="NEXT")
 
-    return pdf.output()
+    return bytes(pdf.output())
 
 
 def generate_csv_export(ranked_df: pd.DataFrame) -> str:
