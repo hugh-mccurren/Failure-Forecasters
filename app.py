@@ -1039,33 +1039,32 @@ with tab_analysis:
             return " ".join(filtered[:2]) if filtered else " ".join(parts[-2:])
         return name
 
+    # Map numeric values to categorical label strings so dots land on heatmap cells
+    cond_val_to_label = {5: "5-Failed", 4: "4-Poor", 3: "3-Fair", 2: "2-Good", 1: "1-Excellent"}
+    cons_val_to_label = {1: "1-Minimal", 2: "2-Low", 3: "3-Moderate", 4: "4-High", 5: "5-Catastrophic"}
+
     for _, row in ranked_df.iterrows():
         cond_val = int(row["Condition (1-5)"])
-        cons_idx = int(row["Failure Consequence"]) - 1  # x: 0-4 maps to consequence 1-5
-        cond_idx = 5 - cond_val  # y: flipped so 5-Failed=row 0 (top), 1-Excellent=row 4 (bottom)
-        jitter_x = np.random.uniform(-0.12, 0.12)
-        jitter_y = np.random.uniform(-0.12, 0.12)
+        cons_val = int(row["Failure Consequence"])
         color = REC_COLORS.get(row["Recommendation"], "#64748b")
         label = short_label(row["Asset Name"])
         fig_matrix.add_trace(go.Scatter(
-            x=[cons_idx + jitter_x], y=[cond_idx + jitter_y],
+            x=[cons_val_to_label[cons_val]], y=[cond_val_to_label[cond_val]],
             mode="markers+text", marker=dict(size=18, color=color, line=dict(width=2, color="#fff")),
             text=[label],
-            textposition="top center", textfont=dict(size=10, color="#1e293b", weight=600),
+            textposition="top center", textfont=dict(size=10, color="#1e293b"),
             hovertemplate=f"<b>{row['Asset Name']}</b><br>"
-                          f"Condition: {int(row['Condition (1-5)'])}/5<br>"
-                          f"Consequence: {int(row['Failure Consequence'])}/5<br>"
+                          f"Condition: {cond_val}/5<br>"
+                          f"Consequence: {cons_val}/5<br>"
                           f"Risk Score: {row['Risk Score']:.0f}<extra></extra>",
             showlegend=False,
         ))
 
     fig_matrix.update_layout(
-        **CHART_LAYOUT, height=400,
-        xaxis=dict(title="Failure Consequence", tickvals=list(range(5)),
-                   ticktext=cons_labels),
-        yaxis=dict(title="Condition", tickvals=list(range(5)),
-                   ticktext=cond_labels),
-        margin=dict(l=10, r=20, t=30, b=40),
+        **CHART_LAYOUT, height=450,
+        xaxis=dict(title="Failure Consequence"),
+        yaxis=dict(title="Condition"),
+        margin=dict(l=10, r=20, t=30, b=50),
     )
     st.plotly_chart(fig_matrix, use_container_width=True)
 
