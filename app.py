@@ -1122,9 +1122,9 @@ with tab_analysis:
 
     fig_matrix = go.Figure()
 
-    # Heatmap background
+    # Heatmap background — use numeric coords so dots can be jittered within cells
     fig_matrix.add_trace(go.Heatmap(
-        z=matrix, x=cons_labels, y=cond_labels,
+        z=matrix, x=list(range(5)), y=list(range(5)),
         colorscale=[[0, "#dcfce7"], [0.3, "#fef9c3"], [0.6, "#fed7aa"], [1, "#fecaca"]],
         showscale=False, hoverinfo="skip",
     ))
@@ -1144,13 +1144,34 @@ with tab_analysis:
     cond_val_to_label = {5: "5-Failed", 4: "4-Poor", 3: "3-Fair", 2: "2-Good", 1: "1-Excellent"}
     cons_val_to_label = {1: "1-Minimal", 2: "2-Low", 3: "3-Moderate", 4: "4-High", 5: "5-Catastrophic"}
 
+    # Group assets by cell to apply jitter when dots overlap
+    from collections import defaultdict
+    cell_counts = defaultdict(int)
+    cell_index = {}
+    for _, row in ranked_df.iterrows():
+        key = (int(row["Condition (1-5)"]), int(row["Failure Consequence"]))
+        cell_index[(row["Asset Name"])] = cell_counts[key]
+        cell_counts[key] += 1
+
     for _, row in ranked_df.iterrows():
         cond_val = int(row["Condition (1-5)"])
         cons_val = int(row["Failure Consequence"])
         color = REC_COLORS.get(row["Recommendation"], "#64748b")
         label = short_label(row["Asset Name"])
+        key = (cond_val, cons_val)
+        n_in_cell = cell_counts[key]
+        idx = cell_index[row["Asset Name"]]
+        # Apply horizontal offset when multiple assets share a cell
+        if n_in_cell > 1:
+            spread = 0.35
+            x_offset = -spread / 2 + spread * idx / (n_in_cell - 1)
+        else:
+            x_offset = 0
+        # Use numeric coords (0-based index) to allow sub-cell positioning
+        cons_idx = cons_val - 1  # 0-4
+        cond_idx = 5 - cond_val  # flip: 5->0, 4->1, 3->2, 2->3, 1->4
         fig_matrix.add_trace(go.Scatter(
-            x=[cons_val_to_label[cons_val]], y=[cond_val_to_label[cond_val]],
+            x=[cons_idx + x_offset], y=[cond_idx],
             mode="markers+text", marker=dict(size=18, color=color, line=dict(width=2, color="#fff")),
             text=[label],
             textposition="top center", textfont=dict(size=10, color="#1e293b"),
@@ -1163,8 +1184,10 @@ with tab_analysis:
 
     fig_matrix.update_layout(
         **CHART_LAYOUT, height=450,
-        xaxis=dict(title="Failure Consequence"),
-        yaxis=dict(title="Condition"),
+        xaxis=dict(title="Failure Consequence",
+                   tickvals=list(range(5)), ticktext=cons_labels),
+        yaxis=dict(title="Condition",
+                   tickvals=list(range(5)), ticktext=cond_labels),
         margin=dict(l=10, r=20, t=30, b=50),
     )
     st.plotly_chart(fig_matrix, use_container_width=True)
