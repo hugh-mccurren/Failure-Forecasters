@@ -880,6 +880,12 @@ with tab_analysis:
         st.markdown("**Risk vs. Cost vs. Carbon**")
         bubble_df = ranked_df.copy()
         bubble_df["Bubble Size"] = bubble_df["Carbon (t CO2e)"].clip(lower=1)
+        # Short labels for bubble chart to avoid overlap
+        bubble_df["Label"] = bubble_df["Asset Name"].apply(
+            lambda n: n.replace("Transmission ", "").replace("Booster ", "")
+                       .replace("Storage ", "").replace("Distribution ", "")
+                       .replace("Station ", "Stn ")
+        )
         fig_bubble = px.scatter(
             bubble_df,
             x="Upgrade Cost ($K)", y="Risk Score",
@@ -888,23 +894,23 @@ with tab_analysis:
             hover_name="Asset Name",
             hover_data={"Upgrade Cost ($K)": ":$,.0f", "Risk Score": ":.1f",
                         "Carbon (t CO2e)": ":.1f", "Priority Score": ":.1f",
-                        "Bubble Size": False, "Recommendation": True},
-            text="Asset Name",
-            size_max=45,
+                        "Bubble Size": False, "Recommendation": True, "Label": False},
+            text="Label",
+            size_max=35,
         )
         fig_bubble.update_traces(
             textposition="top center",
             textfont=dict(size=9, color="#334155"),
         )
         fig_bubble.update_layout(
-            **CHART_LAYOUT, height=400, margin=dict(l=8, r=30, t=44, b=50),
+            **CHART_LAYOUT, height=460, margin=dict(l=50, r=30, t=30, b=80),
             showlegend=True,
-            legend=dict(orientation="h", yanchor="bottom", y=-0.22, xanchor="center", x=0.5,
+            legend=dict(orientation="h", yanchor="top", y=-0.18, xanchor="center", x=0.5,
                         font=dict(size=10)),
             xaxis_title="Upgrade Cost ($K)", yaxis_title="Risk Score",
         )
         fig_bubble.update_xaxes(gridcolor="#edf2f7")
-        fig_bubble.update_yaxes(gridcolor="#edf2f7")
+        fig_bubble.update_yaxes(gridcolor="#edf2f7", range=[0, bubble_df["Risk Score"].max() * 1.2])
         st.plotly_chart(fig_bubble, use_container_width=True)
         st.caption("Bubble size = embodied carbon. Top-left = high risk, low cost (best value).")
 
@@ -935,7 +941,7 @@ with tab_analysis:
                           annotation_position="top left",
                           annotation_font=dict(size=10, color="#ef4444"))
         fig_cum.update_layout(
-            **CHART_LAYOUT, height=380, margin=dict(l=8, r=30, t=44, b=28),
+            **CHART_LAYOUT, height=460, margin=dict(l=50, r=30, t=30, b=80),
             xaxis_title="Cumulative Investment ($K)",
             yaxis_title="Cumulative Risk Reduction (%)",
             showlegend=False,
