@@ -207,17 +207,18 @@ def get_expected_life(asset_type: str, material: str) -> int:
 def get_default_assets() -> pd.DataFrame:
     # 5 demo assets — each tells a different story for presentation:
     #  1. Transmission Main A     — old cast iron, failing, catastrophic consequence (obvious #1)
-    #  2. Booster Pump Station 1  — critical pump near end of 20-yr life, triggers RUL warning
-    #  3. Storage Reservoir B     — big expensive tank, high consequence but condition still OK
-    #  4. WWTP Clarifier #2      — aging steel clarifier, moderate risk, shows mid-tier ranking
+    #  2. Booster Pump Station 1  — critical pump at 95% of 20-yr life, triggers RUL warning
+    #  3. Storage Reservoir B     — big expensive tank, condition 4, high consequence
+    #  4. WWTP Clarifier #2      — steel clarifier at 95% of 40-yr life, moderate consequence
     #  5. Distribution Line C    — younger copper line, low consequence, shows deferral logic
+    # Data tuned so positions 2-4 swap under different weight profiles (sensitivity chart)
     return pd.DataFrame({
         "Asset Name":          ["Transmission Main A", "Booster Pump Station 1",
                                 "Storage Reservoir B",  "WWTP Clarifier #2",
                                 "Distribution Line C"],
         "Asset Type":          ["Pipe", "Pump", "Tank", "Clarifier", "Pipe"],
-        "Age (yrs)":           [72, 18, 45, 32, 25],
-        "Condition (1-5)":     [4,  3,  3,  3,  2],
+        "Age (yrs)":           [72, 19, 45, 38, 25],
+        "Condition (1-5)":     [4,  3,  4,  3,  2],
         "Failure Consequence": [5,  4,  5,  3,  2],
         "Upgrade Cost ($K)":   [1200, 380, 2100, 780, 180],
         "Material":            ["Cast Iron", "Steel", "Concrete", "Steel", "Copper"],
