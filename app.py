@@ -906,7 +906,7 @@ with tab_analysis:
             **CHART_LAYOUT, height=460, margin=dict(l=50, r=30, t=30, b=80),
             showlegend=True,
             legend=dict(orientation="h", yanchor="top", y=-0.18, xanchor="center", x=0.5,
-                        font=dict(size=10)),
+                        font=dict(size=10), title_text=""),
             xaxis_title="Upgrade Cost ($K)", yaxis_title="Risk Score",
         )
         fig_bubble.update_xaxes(gridcolor="#edf2f7")
