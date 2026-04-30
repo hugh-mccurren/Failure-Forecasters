@@ -978,7 +978,7 @@ with tab_analysis:
     ac1, ac2 = st.columns(2)
 
     with ac1:
-        st.markdown("**Risk vs. Cost vs. Carbon**")
+        st.markdown("**Risk vs. Cost (bubble size = Carbon)**")
         bubble_df = ranked_df.copy()
         bubble_df["Bubble Size"] = bubble_df["Carbon (t CO2e)"].clip(lower=1)
         # Short labels for bubble chart to avoid overlap
